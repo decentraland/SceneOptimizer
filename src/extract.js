@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import sharp from 'sharp';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { listTextureSlots } from '@gltf-transform/functions';
@@ -76,8 +78,9 @@ function buildTextureNameMap(document, globalUsedNames) {
   const nameMap = new Map();
   const usedNames = globalUsedNames;
 
+  // Build a lookup: texture → slot category (from material assignments)
+  const textureCategories = new Map();
   for (const material of root.listMaterials()) {
-    const matName = sanitizeFilename(material.getName() || 'material');
     const slots = [
       ['baseColorTexture', material.getBaseColorTexture()],
       ['normalTexture', material.getNormalTexture()],
@@ -85,33 +88,31 @@ function buildTextureNameMap(document, globalUsedNames) {
       ['occlusionTexture', material.getOcclusionTexture()],
       ['emissiveTexture', material.getEmissiveTexture()],
     ];
-
     for (const [slotName, texture] of slots) {
-      if (!texture || nameMap.has(texture)) continue;
-      const category = classifyTextureSlot(slotName);
-      const ext = mimeToExtension(texture.getMimeType());
-      let baseName = `${matName}_${category}`;
-      let finalName = baseName + ext;
-
-      let counter = 2;
-      while (usedNames.has(finalName)) {
-        finalName = `${baseName}_${counter}${ext}`;
-        counter++;
+      if (texture && !textureCategories.has(texture)) {
+        textureCategories.set(texture, classifyTextureSlot(slotName));
       }
-
-      usedNames.add(finalName);
-      nameMap.set(texture, { filename: finalName, category });
     }
   }
 
+  // Use the texture's ORIGINAL name from the GLB, with category suffix
   for (const texture of textures) {
     if (nameMap.has(texture)) continue;
 
-    const slots = listTextureSlots(texture);
-    const category = slots.length > 0 ? classifyTextureSlot(slots[0]) : 'other';
-    const texName = sanitizeFilename(texture.getName() || 'texture');
+    const originalName = texture.getName() || '';
+    const category = textureCategories.get(texture)
+      || (listTextureSlots(texture).length > 0 ? classifyTextureSlot(listTextureSlots(texture)[0]) : 'other');
     const ext = mimeToExtension(texture.getMimeType());
-    let baseName = `${texName}_${category}`;
+
+    // Use original texture name if available, otherwise fall back to "texture"
+    let baseName;
+    if (originalName) {
+      // Use original name as-is (sanitized), don't append category if name already implies it
+      baseName = sanitizeFilename(originalName);
+    } else {
+      baseName = `texture_${category}`;
+    }
+
     let finalName = baseName + ext;
 
     let counter = 2;
@@ -146,6 +147,8 @@ export async function extractCommand(input, options, onProgress = defaultProgres
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
   const manifest = {};
   const globalUsedNames = new Set();
+  // Dedup key (sourceName:width:height) → filename: deduplicates shared textures across GLBs
+  const dedupIndex = new Map();
 
   for (const glbPath of glbFiles) {
     const baseName = path.basename(glbPath, '.glb');
@@ -166,36 +169,78 @@ export async function extractCommand(input, options, onProgress = defaultProgres
 
     let extractedCount = 0;
     let totalTextureBytes = 0;
+    // Maps texture object → actual filename used (may differ from nameMap if deduped)
+    const dedupedNames = new Map();
 
     for (const texture of textures) {
       const imageData = texture.getImage();
       if (!imageData) continue;
 
       const { filename, category } = nameMap.get(texture);
-      const texturePath = path.join(texturesDir, filename);
-      await fs.writeFile(texturePath, imageData);
 
-      manifest[filename] = category;
-      totalTextureBytes += imageData.byteLength;
-      extractedCount++;
+      // Build dedup key from: original texture name + dimensions
+      // Textures with the same source name and size across GLBs are the same asset
+      const sourceName = texture.getName() || '';
+      let dedupKey = '';
+      if (sourceName) {
+        try {
+          const meta = await sharp(Buffer.from(imageData)).metadata();
+          dedupKey = `${sourceName}:${meta.width}:${meta.height}`;
+        } catch {
+          dedupKey = '';
+        }
+      }
 
-      onProgress({
-        type: 'texture-extracted',
-        file: `${baseName}.glb`,
-        filename,
-        size: imageData.byteLength,
-        category,
-        message: `  Extracted: ${filename} (${formatBytes(imageData.byteLength)}) [${category}]`,
-      });
+      // Also compute pixel hash as fallback for unnamed textures or different names w/ same pixels
+      const rawPixels = await sharp(Buffer.from(imageData)).raw().toBuffer();
+      const pixelHash = crypto.createHash('sha256').update(rawPixels).digest('hex');
+
+      // Check both dedup strategies
+      const existingByName = dedupKey ? dedupIndex.get(`name:${dedupKey}`) : null;
+      const existingByHash = dedupIndex.get(`hash:${pixelHash}`);
+      const existing = existingByName || existingByHash;
+
+      if (existing) {
+        dedupedNames.set(texture, existing);
+
+        onProgress({
+          type: 'texture-reused',
+          file: `${baseName}.glb`,
+          filename: existing,
+          originalName: filename,
+          category,
+          message: `  Reused: ${filename} → ${existing} (deduplicated)`,
+        });
+      } else {
+        // New unique texture — write to disk
+        const texturePath = path.join(texturesDir, filename);
+        await fs.writeFile(texturePath, imageData);
+        if (dedupKey) dedupIndex.set(`name:${dedupKey}`, filename);
+        dedupIndex.set(`hash:${pixelHash}`, filename);
+        dedupedNames.set(texture, filename);
+
+        manifest[filename] = category;
+        totalTextureBytes += imageData.byteLength;
+        extractedCount++;
+
+        onProgress({
+          type: 'texture-extracted',
+          file: `${baseName}.glb`,
+          filename,
+          size: imageData.byteLength,
+          category,
+          message: `  Extracted: ${filename} (${formatBytes(imageData.byteLength)}) [${category}]`,
+        });
+      }
     }
 
     // Build a map of image index → URI for patching the GLB after write
     const imageURIs = new Map();
     const imageList = root.listTextures();
     for (let i = 0; i < imageList.length; i++) {
-      const info = nameMap.get(imageList[i]);
-      if (!info) continue;
-      imageURIs.set(i, '../textures/' + info.filename);
+      const resolvedName = dedupedNames.get(imageList[i]);
+      if (!resolvedName) continue;
+      imageURIs.set(i, '../textures/' + resolvedName);
       imageList[i].setImage(null);
     }
 

@@ -86,11 +86,15 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', async (req, res) => {
   const { watchFolder, outputDir } = req.body;
   let restart = false;
-  if (watchFolder && watchFolder !== settings.watchFolder) {
-    settings.watchFolder = path.resolve(watchFolder);
+
+  // Allow clearing the folders (empty string resets)
+  if (watchFolder !== undefined && watchFolder !== settings.watchFolder) {
+    settings.watchFolder = watchFolder ? path.resolve(watchFolder) : '';
     restart = true;
   }
-  if (outputDir) settings.outputDir = path.resolve(outputDir);
+  if (outputDir !== undefined) {
+    settings.outputDir = outputDir ? path.resolve(outputDir) : '';
+  }
   if (restart) await startWatcher();
   res.json(settings);
 });

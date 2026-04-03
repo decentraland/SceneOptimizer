@@ -1370,22 +1370,22 @@
 
     // === API ===
     async function loadSettings() {
+      // Always start with empty folder slots on page load
+      const watchDrop = document.getElementById('watchFolderDrop');
+      const outputDrop = document.getElementById('outputDirDrop');
+      resetDropZone(watchDrop, 'watchFolder');
+      resetDropZone(outputDrop, 'outputDir');
+      checkShowContinue();
+
+      // Reset server-side settings too
       try {
-        const res = await fetch('/api/settings');
-        const s = await res.json();
-
-        // Populate drop zones with saved paths
-        const watchDrop = document.getElementById('watchFolderDrop');
-        const outputDrop = document.getElementById('outputDirDrop');
-
-        if (s.watchFolder) {
-          setFolderPath(watchDrop, 'watchFolder', s.watchFolder);
-        }
-        if (s.outputDir) {
-          setFolderPath(outputDrop, 'outputDir', s.outputDir);
-        }
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ watchFolder: '', outputDir: '' }),
+        });
       } catch (e) {
-        addLog('Could not load settings', 'warning');
+        addLog('Could not connect to server', 'warning');
       }
     }
 
@@ -1452,7 +1452,7 @@
     function setupFolderDrop(dropEl) {
       const targetId = dropEl.dataset.target;
 
-      // Drag events
+      // Drag/drop events directly on the drop element
       dropEl.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1470,25 +1470,22 @@
         e.stopPropagation();
         dropEl.classList.remove('drag-over');
 
-        // Strategy: use a hidden directory input to get the real path
-        // For drag-drop, read folder contents and ask server to find the exact match
         const items = e.dataTransfer.items;
         if (items && items.length > 0) {
           const entry = items[0].webkitGetAsEntry?.();
           if (entry && entry.isDirectory) {
             const folderName = entry.name;
 
-            // Recursively collect relative paths (up to depth 2) for fingerprinting
+            // Collect relative paths for fingerprinting
             const relativePaths = [];
             const readDir = (dirEntry, prefix) => new Promise((resolve) => {
               dirEntry.createReader().readEntries((entries) => {
                 const promises = [];
-                for (const e of entries) {
-                  const relPath = prefix ? prefix + '/' + e.name : e.name;
-                  relativePaths.push({ name: e.name, path: relPath, isDir: e.isDirectory });
-                  // Go one level deeper for subdirs
-                  if (e.isDirectory && !prefix) {
-                    promises.push(readDir(e, e.name));
+                for (const en of entries) {
+                  const relPath = prefix ? prefix + '/' + en.name : en.name;
+                  relativePaths.push({ name: en.name, path: relPath, isDir: en.isDirectory });
+                  if (en.isDirectory && !prefix) {
+                    promises.push(readDir(en, en.name));
                   }
                 }
                 Promise.all(promises).then(resolve);
@@ -1498,7 +1495,6 @@
             await readDir(entry, '');
 
             try {
-              // Send sibling context (the other folder's path) to help disambiguate
               const siblingId = targetId === 'watchFolder' ? 'outputDir' : 'watchFolder';
               const siblingPath = document.getElementById(siblingId)?.value || '';
               const res = await fetch('/api/resolve-drop', {
@@ -1519,14 +1515,14 @@
           }
         }
 
-        // If nothing worked, show inline edit
+        // Fallback: inline edit
         showInlineEdit(dropEl, targetId);
       });
 
-      // Click → show inline edit field
+      // Click → inline edit (but not when clicking on the edit input itself)
       dropEl.addEventListener('click', (e) => {
-        // Don't trigger if clicking on the edit input itself
         if (e.target.classList.contains('folder-drop-edit')) return;
+        if (e.target.closest('.folder-drop-edit')) return;
         showInlineEdit(dropEl, targetId);
       });
     }
