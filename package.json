@@ -1,0 +1,25 @@
+{
+  "name": "scene-optimizer",
+  "version": "1.0.0",
+  "description": "Extract textures from GLB files and compress them with per-type control",
+  "type": "module",
+  "bin": {
+    "scene-optimizer": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "ui": "node src/server.js",
+    "build": "node scripts/build-dist.js"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/extensions": "^4.3.0",
+    "@gltf-transform/functions": "^4.3.0",
+    "chokidar": "^5.0.0",
+    "commander": "^14.0.0",
+    "express": "^5.2.1",
+    "glob": "^11.0.0",
+    "open": "^11.0.0",
+    "sharp": "^0.34.0"
+  }
+}

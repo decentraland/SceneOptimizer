@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scene Optimizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================
+       DECENTRALAND-STYLE DESIGN SYSTEM
+       ============================================ */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #121212;
+      --bg-secondary: #18141a;
+      --surface: #242129;
+      --surface-hover: #2e2a33;
+      --surface-border: rgba(255, 255, 255, 0.06);
+      --surface-border-hover: rgba(255, 255, 255, 0.12);
+
+      --dcl: #ff2d55;
+      --dcl-hover: #ff3d61;
+      --dcl-glow: rgba(255, 45, 85, 0.25);
+
+      --purple: #691ea9;
+      --purple-light: #9763c1;
+      --blue: #438fff;
+      --blue-hover: #5a9fff;
+
+      --text: #ffffff;
+      --text-secondary: #a09ba8;
+      --text-muted: #676370;
+      --text-dim: #5e5b67;
+
+      --success: #34ce77;
+      --success-bg: rgba(52, 206, 119, 0.12);
+      --warning: #ffa900;
+      --warning-bg: rgba(255, 169, 0, 0.12);
+      --error: #ff4d4d;
+      --error-bg: rgba(255, 77, 77, 0.12);
+
+      --divider: rgba(255, 255, 255, 0.06);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-xs: 6px;
+
+      --gradient-brand: linear-gradient(135deg, #ff2d55 0%, #ff6b81 100%);
+      --gradient-purple: linear-gradient(135deg, #c640cd 0%, #7b2fba 50%, #5a1fa9 100%);
+      --gradient-metaverse: linear-gradient(to bottom, #060d2b, #132d7d 52%, #9763c1);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ============================================
+       SCROLLBAR
+       ============================================ */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+    /* ============================================
+       LAYOUT
+       ============================================ */
+    .app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--divider);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--gradient-brand);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: white;
+      box-shadow: 0 4px 12px var(--dcl-glow);
+    }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .logo-text span {
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+
+    .connection-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      transition: all 0.3s ease;
+    }
+
+    .connection-badge.connected {
+      border-color: rgba(52, 206, 119, 0.3);
+    }
+
+    .connection-badge.disconnected {
+      border-color: rgba(255, 77, 77, 0.3);
+    }
+
+    .conn-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      transition: background 0.3s ease;
+    }
+
+    .connected .conn-dot {
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+
+    .disconnected .conn-dot {
+      background: var(--error);
+      box-shadow: 0 0 6px var(--error);
+    }
+
+    .main {
+      flex: 1;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px 32px 60px;
+    }
+
+    /* ============================================
+       SECTION HEADERS
+       ============================================ */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+    }
+
+    .section-title .icon {
+      margin-right: 8px;
+      opacity: 0.7;
+    }
+
+    /* ============================================
+       CARDS
+       ============================================ */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      transition: border-color 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--surface-border-hover);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .card-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* ============================================
+       FOLDER INPUTS
+       ============================================ */
+    .folders-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .folders-grid > .field {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .field-input {
+      background: var(--bg);
+      border: 1px solid var(--divider);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .field-input:focus {
+      border-color: var(--dcl);
+      box-shadow: 0 0 0 3px var(--dcl-glow);
+    }
+
+    .field-input::placeholder {
+      color: var(--text-dim);
+    }
+
+    /* ============================================
+       BUTTONS
+       ============================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .btn-primary {
+      background: var(--gradient-brand);
+      color: white;
+      box-shadow: 0 4px 16px var(--dcl-glow);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(255, 45, 85, 0.35);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border: 1px solid var(--divider);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--surface-border-hover);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--divider);
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+    }
+
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 12px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    /* ============================================
+       DROP ZONE
+       ============================================ */
+    .drop-zone {
+      border: 2px dashed var(--divider);
+      border-radius: var(--radius);
+      padding: 48px 24px;
+      text-align: center;
+      transition: all 0.25s ease;
+      cursor: default;
+    }
+
+    .drop-zone:hover {
+      border-color: var(--text-dim);
+    }
+
+    .drop-zone-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    .drop-zone-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .drop-zone-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ============================================
+       FILE TABLE
+       ============================================ */
+    .file-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .file-table thead th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border-bottom: 1px solid var(--divider);
+    }
+
+    .file-table tbody tr {
+      transition: background 0.15s ease;
+    }
+
+    .file-table tbody tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .file-table tbody td {
+      padding: 12px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--divider);
+    }
+
+    .file-name {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 500;
+    }
+
+    .file-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-xs);
+      background: var(--gradient-purple);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .file-size {
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Status Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+
+    .badge::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    .badge.pending {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+    }
+    .badge.pending::before { background: var(--text-muted); }
+
+    .badge.extracting {
+      background: rgba(105, 30, 169, 0.2);
+      color: var(--purple-light);
+    }
+    .badge.extracting::before { background: var(--purple-light); }
+
+    .badge.extracted {
+      background: var(--success-bg);
+      color: var(--success);
+    }
+    .badge.extracted::before { background: var(--success); }
+
+    .badge.error {
+      background: var(--error-bg);
+      color: var(--error);
+    }
+    .badge.error::before { background: var(--error); }
+
+    .badge.compressing {
+      background: rgba(67, 143, 255, 0.15);
+      color: var(--blue);
+    }
+    .badge.compressing::before { background: var(--blue); }
+
+    /* ============================================
+       SETTINGS GRID
+       ============================================ */
+    .settings-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .setting-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .setting-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .setting-hint {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    /* Styled select */
+    .select-wrap {
+      position: relative;
+    }
+
+    .select-wrap select {
+      width: 100%;
+      appearance: none;
+      -webkit-appearance: none;
+      background: var(--bg);
+      border: 1px solid var(--divider);
+      border-radius: var(--radius-sm);
+      padding: 10px 36px 10px 14px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .select-wrap select:focus {
+      border-color: var(--dcl);
+      box-shadow: 0 0 0 3px var(--dcl-glow);
+    }
+
+    .select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--text-muted);
+      pointer-events: none;
+    }
+
+    .select-wrap select option {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    /* Quality slider */
+    .quality-control {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .quality-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      background: var(--divider);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .quality-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--dcl);
+      box-shadow: 0 2px 8px var(--dcl-glow);
+      cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+
+    .quality-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+
+    .quality-value {
+      min-width: 38px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--divider);
+      border-radius: var(--radius-xs);
+      padding: 6px 8px;
+    }
+
+    /* Texture type tags */
+    .texture-tag {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+    }
+
+    .texture-tag.basecolor { background: rgba(255, 45, 85, 0.15); color: var(--dcl); }
+    .texture-tag.normal { background: rgba(67, 143, 255, 0.15); color: var(--blue); }
+    .texture-tag.orm { background: rgba(255, 169, 0, 0.15); color: var(--warning); }
+    .texture-tag.emissive { background: rgba(52, 206, 119, 0.15); color: var(--success); }
+    .texture-tag.other { background: rgba(255, 255, 255, 0.08); color: var(--text-secondary); }
+
+    /* ============================================
+       LOG PANEL
+       ============================================ */
+    .log-container {
+      background: #0e0c10;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--divider);
+    }
+
+    .log-header-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .log-body {
+      padding: 12px 14px;
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .log-line {
+      white-space: pre-wrap;
+      word-break: break-all;
+      padding: 1px 0;
+    }
+
+    .log-line::before {
+      content: '›';
+      margin-right: 8px;
+      opacity: 0.3;
+    }
+
+    .log-line.error { color: var(--error); }
+    .log-line.error::before { content: '✕'; color: var(--error); opacity: 0.7; }
+    .log-line.warning { color: var(--warning); }
+    .log-line.warning::before { content: '!'; color: var(--warning); opacity: 0.7; }
+    .log-line.success { color: var(--success); }
+    .log-line.success::before { content: '✓'; color: var(--success); opacity: 0.7; }
+    .log-line.info { color: var(--text-muted); }
+
+    /* ============================================
+       SUMMARY / RESULTS
+       ============================================ */
+    .results-card {
+      background: linear-gradient(135deg, rgba(255, 45, 85, 0.06) 0%, rgba(105, 30, 169, 0.06) 100%);
+      border: 1px solid rgba(255, 45, 85, 0.15);
+    }
+
+    .results-grid {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 40px;
+      padding: 12px 0;
+    }
+
+    .result-stat {
+      text-align: center;
+    }
+
+    .result-stat .value {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .result-stat .label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-top: 4px;
+    }
+
+    .result-arrow {
+      font-size: 20px;
+      color: var(--text-dim);
+    }
+
+    .result-stat .value.before { color: var(--text-secondary); }
+    .result-stat .value.after { color: var(--success); }
+    .result-stat .value.reduction { color: var(--dcl); }
+
+    /* ============================================
+       PROGRESS BAR
+       ============================================ */
+    .progress-bar-wrap {
+      width: 100%;
+      height: 3px;
+      background: var(--divider);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .progress-bar-wrap.active {
+      display: block;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--gradient-brand);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.3s ease;
+      animation: progressPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes progressPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .progress-bar.indeterminate {
+      width: 30%;
+      animation: indeterminate 1.5s ease-in-out infinite;
+    }
+
+    @keyframes indeterminate {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+
+    /* ============================================
+       SEPARATOR
+       ============================================ */
+    .divider {
+      height: 1px;
+      background: var(--divider);
+      margin: 12px 0;
+    }
+
+    /* ============================================
+       FOOTER
+       ============================================ */
+    .footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .footer a {
+      color: var(--dcl);
+      text-decoration: none;
+    }
+
+    /* ============================================
+       RESPONSIVE
+       ============================================ */
+    @media (max-width: 640px) {
+      .main { padding: 16px; }
+      .topbar { padding: 12px 16px; }
+      .folders-grid { grid-template-columns: 1fr; }
+      .settings-panel { grid-template-columns: 1fr; }
+      .results-grid { flex-direction: column; gap: 20px; }
+      .result-arrow { transform: rotate(90deg); }
+    }
+
+    /* ============================================
+       ANIMATIONS
+       ============================================ */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card {
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .badge.extracting, .badge.compressing {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    /* ============================================
+       FOLDER DROP ZONES
+       ============================================ */
+    .folder-drop {
+      position: relative;
+      border: 2px dashed var(--divider);
+      border-radius: var(--radius);
+      padding: 20px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .folder-drop:hover {
+      border-color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    .folder-drop.drag-over {
+      border-color: var(--dcl);
+      background: rgba(255, 45, 85, 0.05);
+      box-shadow: inset 0 0 30px rgba(255, 45, 85, 0.05);
+    }
+
+    .folder-drop.has-path {
+      border-style: solid;
+      border-color: rgba(52, 206, 119, 0.25);
+      background: rgba(52, 206, 119, 0.03);
+    }
+
+    .folder-drop.has-path:hover {
+      border-color: rgba(52, 206, 119, 0.4);
+      background: rgba(52, 206, 119, 0.05);
+    }
+
+    .folder-drop > *:not(.folder-drop-edit) {
+      pointer-events: none;
+    }
+
+    .folder-drop-icon {
+      font-size: 28px;
+      opacity: 0.5;
+      transition: all 0.2s;
+    }
+
+    .folder-drop.has-path .folder-drop-icon {
+      font-size: 22px;
+      opacity: 0.7;
+    }
+
+    .folder-drop.drag-over .folder-drop-icon {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+
+    .folder-drop-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .folder-drop.drag-over .folder-drop-hint {
+      color: var(--dcl);
+    }
+
+    .folder-drop-path {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px 10px;
+      border-radius: 4px;
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      box-sizing: border-box;
+    }
+
+    .folder-drop-change {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    /* Inline edit input */
+    .folder-drop-edit {
+      width: 100%;
+      max-width: calc(100% - 10px);
+      background: var(--bg);
+      border: 1px solid var(--dcl);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      outline: none;
+      box-shadow: 0 0 0 3px var(--dcl-glow);
+      cursor: text;
+    }
+
+    .folder-drop-edit::placeholder {
+      color: var(--text-dim);
+    }
+
+    .folder-drop-edit:focus {
+      border-color: var(--dcl);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="logo">
+          <div class="logo-icon">S</div>
+          <div class="logo-text">Scene<span>Optimizer</span></div>
+        </div>
+      </div>
+      <div class="connection-badge disconnected" id="connectionBadge">
+        <span class="conn-dot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- FOLDERS -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Folders</div>
+            <div class="card-subtitle">Drag & drop folders from Finder, or click to browse</div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="continueBtn" onclick="saveSettings()" style="display:none">Continue</button>
+        </div>
+        <div class="folders-grid">
+          <div class="field">
+            <label class="field-label">Watch Folder</label>
+            <div class="folder-drop" id="watchFolderDrop" data-target="watchFolder">
+              <input type="hidden" id="watchFolder">
+              <div class="folder-drop-icon">📂</div>
+              <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">Output Folder</label>
+            <div class="folder-drop" id="outputDirDrop" data-target="outputDir">
+              <input type="hidden" id="outputDir">
+              <div class="folder-drop-icon">📁</div>
+              <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILE QUEUE -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">GLB Files</div>
+            <div class="card-subtitle">Files detected in the watch folder</div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="extractAllBtn" onclick="extractAll()" disabled>
+            Extract All
+          </button>
+        </div>
+
+        <div id="fileQueue">
+          <div class="drop-zone">
+            <div class="drop-zone-icon">📦</div>
+            <div class="drop-zone-title">No GLB files detected</div>
+            <div class="drop-zone-sub">Drop <code>.glb</code> files into the watch folder to get started</div>
+          </div>
+        </div>
+
+        <div class="progress-bar-wrap" id="extractProgress">
+          <div class="progress-bar indeterminate"></div>
+        </div>
+      </div>
+
+      <!-- COMPRESSION SETTINGS -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Compression Settings</div>
+            <div class="card-subtitle">Configure texture resolution, quality and format</div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="compressBtn" onclick="compressTextures()" disabled>
+            Compress Textures
+          </button>
+        </div>
+
+        <!-- Texture Sizes -->
+        <div class="settings-panel">
+          <div class="setting-item">
+            <label class="setting-label">
+              <span class="texture-tag basecolor">Base Color</span>
+              Max Size
+            </label>
+            <div class="select-wrap">
+              <select id="basecolorSize">
+                <option value="64">64 px</option>
+                <option value="128">128 px</option>
+                <option value="256">256 px</option>
+                <option value="512">512 px</option>
+                <option value="1024" selected>1024 px</option>
+                <option value="2048">2048 px</option>
+                <option value="4096">4096 px</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <span class="texture-tag normal">Normal</span>
+              Max Size
+            </label>
+            <div class="select-wrap">
+              <select id="normalSize">
+                <option value="64">64 px</option>
+                <option value="128">128 px</option>
+                <option value="256">256 px</option>
+                <option value="512">512 px</option>
+                <option value="1024" selected>1024 px</option>
+                <option value="2048">2048 px</option>
+                <option value="4096">4096 px</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <span class="texture-tag orm">ORM</span>
+              Max Size
+              <span class="setting-hint">Roughness / Metallic / Occlusion</span>
+            </label>
+            <div class="select-wrap">
+              <select id="ormSize">
+                <option value="64">64 px</option>
+                <option value="128">128 px</option>
+                <option value="256">256 px</option>
+                <option value="512" selected>512 px</option>
+                <option value="1024">1024 px</option>
+                <option value="2048">2048 px</option>
+                <option value="4096">4096 px</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <span class="texture-tag emissive">Emissive</span>
+              Max Size
+            </label>
+            <div class="select-wrap">
+              <select id="emissiveSize">
+                <option value="64">64 px</option>
+                <option value="128">128 px</option>
+                <option value="256">256 px</option>
+                <option value="512" selected>512 px</option>
+                <option value="1024">1024 px</option>
+                <option value="2048">2048 px</option>
+                <option value="4096">4096 px</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <span class="texture-tag other">Other</span>
+              Max Size
+            </label>
+            <div class="select-wrap">
+              <select id="otherSize">
+                <option value="64">64 px</option>
+                <option value="128">128 px</option>
+                <option value="256">256 px</option>
+                <option value="512" selected>512 px</option>
+                <option value="1024">1024 px</option>
+                <option value="2048">2048 px</option>
+                <option value="4096">4096 px</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">Format</label>
+            <div class="select-wrap">
+              <select id="format">
+                <option value="png" selected>PNG</option>
+                <option value="jpeg">JPEG</option>
+                <option value="webp">WebP</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider" style="margin: 20px 0;"></div>
+
+        <!-- Quality + Bit Depth -->
+        <div class="settings-panel">
+          <div class="setting-item">
+            <label class="setting-label">Quality</label>
+            <div class="quality-control">
+              <input type="range" class="quality-slider" min="1" max="100" value="85" id="quality" oninput="syncQuality(this)">
+              <span class="quality-value" id="qualityVal">85</span>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">Bit Depth</label>
+            <div class="select-wrap">
+              <select id="depth">
+                <option value="8" selected>8-bit</option>
+                <option value="16">16-bit</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress-bar-wrap" id="compressProgress">
+          <div class="progress-bar indeterminate"></div>
+        </div>
+      </div>
+
+      <!-- LOG -->
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="log-container">
+          <div class="log-header">
+            <span class="log-header-title">Output Log</span>
+            <button class="btn btn-outline btn-sm" onclick="clearLog()" style="border: none; padding: 4px 10px;">Clear</button>
+          </div>
+          <div class="log-body" id="log">
+            <div class="log-line info">Waiting for connection...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div class="card results-card" id="summaryCard" style="display: none;">
+        <div class="card-header">
+          <div class="card-title">Compression Results</div>
+        </div>
+        <div class="results-grid">
+          <div class="result-stat">
+            <div class="value before" id="sumBefore">—</div>
+            <div class="label">Before</div>
+          </div>
+          <div class="result-arrow">→</div>
+          <div class="result-stat">
+            <div class="value after" id="sumAfter">—</div>
+            <div class="label">After</div>
+          </div>
+          <div class="result-arrow">→</div>
+          <div class="result-stat">
+            <div class="value reduction" id="sumReduction">—</div>
+            <div class="label">Saved</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      Scene Optimizer — Built for 3D artists
+    </div>
+  </div>
+
+
+  <script>
+    let files = [];
+    let processing = false;
+
+    // === SSE ===
+    function connectSSE() {
+      const es = new EventSource('/api/events');
+
+      es.addEventListener('snapshot', (e) => {
+        files = JSON.parse(e.data);
+        renderFiles();
+      });
+
+      es.addEventListener('file-added', (e) => {
+        const f = JSON.parse(e.data);
+        const idx = files.findIndex(x => x.name === f.name);
+        if (idx >= 0) files[idx] = f; else files.push(f);
+        renderFiles();
+      });
+
+      es.addEventListener('file-removed', (e) => {
+        const { name } = JSON.parse(e.data);
+        files = files.filter(x => x.name !== name);
+        renderFiles();
+      });
+
+      es.addEventListener('file-updated', (e) => {
+        const f = JSON.parse(e.data);
+        const idx = files.findIndex(x => x.name === f.name);
+        if (idx >= 0) files[idx] = f;
+        renderFiles();
+      });
+
+      es.addEventListener('extract-progress', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.message) addLog(d.message, d.type === 'error' ? 'error' : 'info');
+      });
+
+      es.addEventListener('compress-progress', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.type === 'summary') {
+          showSummary(d);
+          addLog(d.message, 'success');
+        } else if (d.type === 'warning') {
+          addLog(d.message, 'warning');
+        } else if (d.message) {
+          addLog(d.message, d.type === 'error' ? 'error' : 'info');
+        }
+      });
+
+      es.addEventListener('status', (e) => {
+        const d = JSON.parse(e.data);
+        processing = d.isProcessing;
+        updateButtons();
+        toggleProgress(d.isProcessing);
+      });
+
+      es.onopen = () => {
+        const badge = document.getElementById('connectionBadge');
+        badge.className = 'connection-badge connected';
+        document.getElementById('statusText').textContent = 'Connected';
+        addLog('Connected to SceneOptimizer', 'success');
+      };
+
+      es.onerror = () => {
+        const badge = document.getElementById('connectionBadge');
+        badge.className = 'connection-badge disconnected';
+        document.getElementById('statusText').textContent = 'Disconnected';
+      };
+    }
+
+    // === Helpers ===
+    function formatBytes(b) {
+      if (b === 0) return '0 B';
+      const u = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(b) / Math.log(1024));
+      return (b / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
+    }
+
+    function syncQuality(input) {
+      document.getElementById('qualityVal').textContent = input.value;
+    }
+
+    function toggleProgress(active) {
+      document.getElementById('extractProgress').className = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
+      document.getElementById('compressProgress').className = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
+    }
+
+    // === Render ===
+    function renderFiles() {
+      const el = document.getElementById('fileQueue');
+
+      if (files.length === 0) {
+        el.innerHTML = `
+          <div class="drop-zone">
+            <div class="drop-zone-icon">📦</div>
+            <div class="drop-zone-title">No GLB files detected</div>
+            <div class="drop-zone-sub">Drop <code>.glb</code> files into the watch folder to get started</div>
+          </div>`;
+        updateButtons();
+        return;
+      }
+
+      let html = `<table class="file-table">
+        <thead><tr><th>File</th><th>Size</th><th>Status</th></tr></thead>
+        <tbody>`;
+
+      for (const f of files) {
+        html += `<tr>
+          <td>
+            <div class="file-name">
+              <div class="file-icon">📄</div>
+              ${f.name}
+            </div>
+          </td>
+          <td class="file-size">${formatBytes(f.size)}</td>
+          <td><span class="badge ${f.status}">${f.status}</span></td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      el.innerHTML = html;
+      updateButtons();
+    }
+
+    function updateButtons() {
+      const hasFiles = files.length > 0;
+      const hasExtracted = files.some(f => f.status === 'extracted');
+      document.getElementById('extractAllBtn').disabled = !hasFiles || processing;
+      document.getElementById('compressBtn').disabled = !hasExtracted || processing;
+    }
+
+    function addLog(msg, cls = 'info') {
+      const el = document.getElementById('log');
+      const line = document.createElement('div');
+      line.className = `log-line ${cls}`;
+      line.textContent = msg;
+      el.appendChild(line);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '';
+      document.getElementById('summaryCard').style.display = 'none';
+    }
+
+    function showSummary(d) {
+      document.getElementById('sumBefore').textContent = formatBytes(d.totalBefore);
+      document.getElementById('sumAfter').textContent = formatBytes(d.totalAfter);
+      document.getElementById('sumReduction').textContent = d.reduction + '%';
+      document.getElementById('summaryCard').style.display = '';
+      document.getElementById('summaryCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // === API ===
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        const s = await res.json();
+
+        // Populate drop zones with saved paths
+        const watchDrop = document.getElementById('watchFolderDrop');
+        const outputDrop = document.getElementById('outputDirDrop');
+
+        if (s.watchFolder) {
+          setFolderPath(watchDrop, 'watchFolder', s.watchFolder);
+        }
+        if (s.outputDir) {
+          setFolderPath(outputDrop, 'outputDir', s.outputDir);
+        }
+      } catch (e) {
+        addLog('Could not load settings', 'warning');
+      }
+    }
+
+    async function saveSettings() {
+      const body = {
+        watchFolder: document.getElementById('watchFolder').value,
+        outputDir: document.getElementById('outputDir').value,
+      };
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      addLog('Settings saved', 'success');
+    }
+
+    async function extractAll() {
+      addLog('Starting extraction...', 'info');
+      toggleProgress(true);
+      try {
+        const res = await fetch('/api/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: 'all' }),
+        });
+        const data = await res.json();
+        if (data.error) addLog('Error: ' + data.error, 'error');
+        else addLog('Extraction complete!', 'success');
+      } catch (e) {
+        addLog('Extraction failed: ' + e.message, 'error');
+      }
+      toggleProgress(false);
+    }
+
+    async function compressTextures() {
+      addLog('Starting compression...', 'info');
+      toggleProgress(true);
+      const body = {
+        basecolorSize: parseInt(document.getElementById('basecolorSize').value),
+        normalSize: parseInt(document.getElementById('normalSize').value),
+        ormSize: parseInt(document.getElementById('ormSize').value),
+        emissiveSize: parseInt(document.getElementById('emissiveSize').value),
+        otherSize: parseInt(document.getElementById('otherSize').value),
+        quality: parseInt(document.getElementById('quality').value),
+        depth: parseInt(document.getElementById('depth').value),
+        format: document.getElementById('format').value,
+      };
+      try {
+        const res = await fetch('/api/compress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.error) addLog('Error: ' + data.error, 'error');
+        else addLog('Compression complete!', 'success');
+      } catch (e) {
+        addLog('Compression failed: ' + e.message, 'error');
+      }
+      toggleProgress(false);
+    }
+
+    // === Folder Drop Zones ===
+    function setupFolderDrop(dropEl) {
+      const targetId = dropEl.dataset.target;
+
+      // Drag events
+      dropEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropEl.classList.add('drag-over');
+      });
+
+      dropEl.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropEl.classList.remove('drag-over');
+      });
+
+      dropEl.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropEl.classList.remove('drag-over');
+
+        // Strategy: use a hidden directory input to get the real path
+        // For drag-drop, read folder contents and ask server to find the exact match
+        const items = e.dataTransfer.items;
+        if (items && items.length > 0) {
+          const entry = items[0].webkitGetAsEntry?.();
+          if (entry && entry.isDirectory) {
+            const folderName = entry.name;
+
+            // Recursively collect relative paths (up to depth 2) for fingerprinting
+            const relativePaths = [];
+            const readDir = (dirEntry, prefix) => new Promise((resolve) => {
+              dirEntry.createReader().readEntries((entries) => {
+                const promises = [];
+                for (const e of entries) {
+                  const relPath = prefix ? prefix + '/' + e.name : e.name;
+                  relativePaths.push({ name: e.name, path: relPath, isDir: e.isDirectory });
+                  // Go one level deeper for subdirs
+                  if (e.isDirectory && !prefix) {
+                    promises.push(readDir(e, e.name));
+                  }
+                }
+                Promise.all(promises).then(resolve);
+              }, () => resolve());
+            });
+
+            await readDir(entry, '');
+
+            try {
+              // Send sibling context (the other folder's path) to help disambiguate
+              const siblingId = targetId === 'watchFolder' ? 'outputDir' : 'watchFolder';
+              const siblingPath = document.getElementById(siblingId)?.value || '';
+              const res = await fetch('/api/resolve-drop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: folderName,
+                  entries: relativePaths.slice(0, 50),
+                  nearPath: siblingPath,
+                }),
+              });
+              const data = await res.json();
+              if (data.path) {
+                setFolderPath(dropEl, targetId, data.path);
+                return;
+              }
+            } catch {}
+          }
+        }
+
+        // If nothing worked, show inline edit
+        showInlineEdit(dropEl, targetId);
+      });
+
+      // Click → show inline edit field
+      dropEl.addEventListener('click', (e) => {
+        // Don't trigger if clicking on the edit input itself
+        if (e.target.classList.contains('folder-drop-edit')) return;
+        showInlineEdit(dropEl, targetId);
+      });
+    }
+
+    function showInlineEdit(dropEl, targetId) {
+      const currentVal = document.getElementById(targetId)?.value || '';
+      const wasHasPath = dropEl.classList.contains('has-path');
+
+      dropEl.innerHTML = `
+        <input type="hidden" id="${targetId}" value="${currentVal.replace(/"/g, '&quot;')}">
+        <div class="folder-drop-icon">📂</div>
+        <input type="text" class="folder-drop-edit" placeholder="Paste folder path here..." value="${currentVal.replace(/"/g, '&quot;')}">
+        <div class="folder-drop-change">Press Enter to confirm, Escape to cancel</div>
+      `;
+      dropEl.classList.remove('has-path');
+
+      const editInput = dropEl.querySelector('.folder-drop-edit');
+      editInput.focus();
+      editInput.select();
+
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = editInput.value.trim();
+          if (val) {
+            setFolderPath(dropEl, targetId, val);
+          } else {
+            resetDropZone(dropEl, targetId);
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          if (wasHasPath && currentVal) {
+            setFolderPath(dropEl, targetId, currentVal);
+          } else {
+            resetDropZone(dropEl, targetId);
+          }
+        }
+      });
+
+      editInput.addEventListener('blur', () => {
+        // Small delay to allow click events to fire first
+        setTimeout(() => {
+          const val = editInput.value.trim();
+          if (val && val !== currentVal) {
+            setFolderPath(dropEl, targetId, val);
+          } else if (currentVal) {
+            setFolderPath(dropEl, targetId, currentVal);
+          } else {
+            resetDropZone(dropEl, targetId);
+          }
+        }, 150);
+      });
+    }
+
+    function setFolderPath(dropEl, targetId, folderPath) {
+      dropEl.classList.add('has-path');
+      dropEl.innerHTML = `
+        <input type="hidden" id="${targetId}" value="${folderPath.replace(/"/g, '&quot;')}">
+        <div class="folder-drop-icon">✅</div>
+        <div class="folder-drop-path" title="${folderPath}">${folderPath}</div>
+        <div class="folder-drop-change">Drop new folder or click to edit</div>
+      `;
+      checkShowContinue();
+    }
+
+    function checkShowContinue() {
+      const watch = document.getElementById('watchFolder')?.value;
+      const output = document.getElementById('outputDir')?.value;
+      const btn = document.getElementById('continueBtn');
+      if (btn) btn.style.display = (watch && output) ? '' : 'none';
+    }
+
+    function resetDropZone(dropEl, targetId) {
+      dropEl.classList.remove('has-path');
+      const icon = targetId === 'watchFolder' ? '📂' : '📁';
+      dropEl.innerHTML = `
+        <input type="hidden" id="${targetId}" value="">
+        <div class="folder-drop-icon">${icon}</div>
+        <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+      `;
+    }
+
+    // Initialize all drop zones
+    document.querySelectorAll('.folder-drop').forEach(setupFolderDrop);
+
+    // === Init ===
+    loadSettings();
+    connectSSE();
+  </script>
+</body>
+</html>
