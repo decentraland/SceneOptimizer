@@ -22,10 +22,19 @@ export async function compressCommand(texturesFolder, options, onProgress = defa
   const quality = parseInt(options.quality);
   const depth = parseInt(options.depth);
   const format = options.format;
+  const denoise = options.denoise || 'off';
 
   if (quality < 1 || quality > 100) throw new Error('Quality must be between 1 and 100');
   if (depth !== 8 && depth !== 16) throw new Error('Bit depth must be 8 or 16');
   if (!['png', 'jpeg', 'webp'].includes(format)) throw new Error('Format must be png, jpeg, or webp');
+
+  // Denoise settings: median filter radius + optional sharpen
+  const denoiseSettings = {
+    off: null,
+    light: { median: 3, sharpen: { sigma: 0.5 } },
+    medium: { median: 3, sharpen: { sigma: 0.8 } },
+    strong: { median: 5, sharpen: { sigma: 1.0 } },
+  };
 
   if (outputDir !== inputDir) {
     await fs.mkdir(outputDir, { recursive: true });
@@ -48,7 +57,7 @@ export async function compressCommand(texturesFolder, options, onProgress = defa
     type: 'start',
     fileCount: imageFiles.length,
     settings: { quality, depth, format, sizes: sizeMap },
-    message: `Found ${imageFiles.length} texture(s) | quality=${quality}, depth=${depth}, format=${format}`,
+    message: `Found ${imageFiles.length} texture(s) | quality=${quality}, depth=${depth}, format=${format}${denoise !== 'off' ? ', denoise=' + denoise : ''}`,
   });
 
   let totalBefore = 0;
@@ -68,6 +77,14 @@ export async function compressCommand(texturesFolder, options, onProgress = defa
 
     if (metadata.height > maxHeight) {
       pipeline = pipeline.resize(null, maxHeight, { withoutEnlargement: true });
+    }
+
+    const dn = denoiseSettings[denoise];
+    if (dn) {
+      pipeline = pipeline.median(dn.median);
+      if (dn.sharpen) {
+        pipeline = pipeline.sharpen(dn.sharpen);
+      }
     }
 
     if (format === 'jpeg' && metadata.channels === 4) {

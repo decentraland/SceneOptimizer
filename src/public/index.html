@@ -906,6 +906,74 @@
       color: var(--dcl);
     }
 
+    .folder-drop-sub {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .folder-mode-toggle {
+      padding: 12px 20px 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .toggle-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-label input[type="checkbox"] {
+      display: none;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-label input:checked + .toggle-switch {
+      background: var(--dcl);
+      border-color: var(--dcl);
+    }
+
+    .toggle-label input:checked + .toggle-switch::after {
+      transform: translateX(16px);
+      background: #fff;
+    }
+
+    .toggle-text {
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    .toggle-text code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+
     .folder-drop-path {
       font-size: 11px;
       color: var(--text-secondary);
@@ -995,8 +1063,16 @@
               <input type="hidden" id="outputDir">
               <div class="folder-drop-icon">📁</div>
               <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+              <div class="folder-drop-sub">Models and textures will be extracted in this folder</div>
             </div>
           </div>
+        </div>
+        <div class="folder-mode-toggle">
+          <label class="toggle-label">
+            <input type="checkbox" id="separateFolders">
+            <span class="toggle-switch"></span>
+            <span class="toggle-text">Extract models and textures in different folders (not recommended)</span>
+          </label>
         </div>
       </div>
 
@@ -1160,6 +1236,18 @@
               <select id="depth">
                 <option value="8" selected>8-bit</option>
                 <option value="16">16-bit</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">Denoise</label>
+            <div class="select-wrap">
+              <select id="denoise">
+                <option value="off" selected>Off</option>
+                <option value="light">Light — subtle cleanup</option>
+                <option value="medium">Medium — balanced</option>
+                <option value="strong">Strong — aggressive</option>
               </select>
             </div>
           </div>
@@ -1377,12 +1465,13 @@
       resetDropZone(outputDrop, 'outputDir');
       checkShowContinue();
 
-      // Reset server-side settings too
+      // Reset toggle and server-side settings
+      document.getElementById('separateFolders').checked = false;
       try {
         await fetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ watchFolder: '', outputDir: '' }),
+          body: JSON.stringify({ watchFolder: '', outputDir: '', separateFolders: false }),
         });
       } catch (e) {
         addLog('Could not connect to server', 'warning');
@@ -1393,6 +1482,7 @@
       const body = {
         watchFolder: document.getElementById('watchFolder').value,
         outputDir: document.getElementById('outputDir').value,
+        separateFolders: document.getElementById('separateFolders').checked,
       };
       await fetch('/api/settings', {
         method: 'POST',
@@ -1432,6 +1522,7 @@
         quality: parseInt(document.getElementById('quality').value),
         depth: parseInt(document.getElementById('depth').value),
         format: document.getElementById('format').value,
+        denoise: document.getElementById('denoise').value,
       };
       try {
         const res = await fetch('/api/compress', {
@@ -1598,10 +1689,12 @@
     function resetDropZone(dropEl, targetId) {
       dropEl.classList.remove('has-path');
       const icon = targetId === 'watchFolder' ? '📂' : '📁';
+      const sub = targetId === 'outputDir' ? '<div class="folder-drop-sub">Models and textures will be extracted in this folder</div>' : '';
       dropEl.innerHTML = `
         <input type="hidden" id="${targetId}" value="">
         <div class="folder-drop-icon">${icon}</div>
         <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+        ${sub}
       `;
     }
 

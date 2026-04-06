@@ -15,22 +15,55 @@ import {
 
 const defaultProgress = (e) => console.log(e.message);
 
-/**
- * Patch a GLB file's JSON chunk to add URI references to images.
- * gltf-transform strips URIs when writing GLB, so we inject them manually.
- */
+const categoryPriority = { baseColor: 5, normal: 4, orm: 3, emissive: 2, other: 1 };
+
+function fixGlbAlignment(buf) {
+  if (buf.length < 20) return buf;
+  const magic = buf.readUInt32LE(0);
+  if (magic !== 0x46546C67) return buf;
+
+  const jsonChunkLength = buf.readUInt32LE(12);
+  const jsonEnd = 20 + jsonChunkLength;
+
+  if (jsonEnd % 4 === 0) return buf;
+
+  const padNeeded = 4 - (jsonEnd % 4);
+  const jsonData = buf.subarray(20, jsonEnd);
+  const padding = Buffer.alloc(padNeeded, 0x20);
+  const newJsonLength = jsonChunkLength + padNeeded;
+
+  const binaryChunk = jsonEnd + 8 <= buf.length ? buf.subarray(jsonEnd) : Buffer.alloc(0);
+  const totalLength = 12 + 8 + newJsonLength + binaryChunk.length;
+
+  const out = Buffer.alloc(totalLength);
+  out.writeUInt32LE(0x46546C67, 0);
+  out.writeUInt32LE(2, 4);
+  out.writeUInt32LE(totalLength, 8);
+  out.writeUInt32LE(newJsonLength, 12);
+  out.writeUInt32LE(0x4E4F534A, 16);
+  jsonData.copy(out, 20);
+  padding.copy(out, 20 + jsonChunkLength);
+  if (binaryChunk.length > 0) binaryChunk.copy(out, 20 + newJsonLength);
+
+  return out;
+}
+
 async function patchGlbImageURIs(glbPath, imageURIs) {
   if (imageURIs.size === 0) return;
 
-  const buf = Buffer.from(await fs.readFile(glbPath));
+  const buf = await fs.readFile(glbPath);
+  if (buf.length < 20) return;
 
-  // GLB header: magic(4) + version(4) + totalLength(4) = 12 bytes
-  // Chunk 0 header: chunkLength(4) + chunkType(4) = 8 bytes
   const jsonChunkLength = buf.readUInt32LE(12);
-  const jsonStr = buf.slice(20, 20 + jsonChunkLength).toString('utf8').trimEnd();
-  const json = JSON.parse(jsonStr);
+  const jsonStr = buf.subarray(20, 20 + jsonChunkLength).toString('utf8').trimEnd();
 
-  // Add URI to each image entry, remove bufferView if present
+  let json;
+  try {
+    json = JSON.parse(jsonStr);
+  } catch {
+    return;
+  }
+
   if (json.images) {
     for (const [idx, filename] of imageURIs) {
       if (json.images[idx]) {
@@ -40,34 +73,32 @@ async function patchGlbImageURIs(glbPath, imageURIs) {
     }
   }
 
-  // Re-encode the JSON chunk, padded to 4-byte alignment with spaces (per GLB spec)
   let newJsonStr = JSON.stringify(json);
-  while (newJsonStr.length % 4 !== 0) newJsonStr += ' ';
+  while (Buffer.byteLength(newJsonStr, 'utf8') % 4 !== 0) newJsonStr += ' ';
   const newJsonBuf = Buffer.from(newJsonStr, 'utf8');
 
-  // Rebuild the GLB: header(12) + json chunk header(8) + json data + binary chunk (if any)
   const binaryChunkStart = 20 + jsonChunkLength;
-  const binaryChunk = binaryChunkStart < buf.length ? buf.slice(binaryChunkStart) : Buffer.alloc(0);
+  const hasBinaryChunk = binaryChunkStart + 8 <= buf.length;
+  const binaryChunk = hasBinaryChunk ? buf.subarray(binaryChunkStart) : Buffer.alloc(0);
 
-  const totalLength = 12 + 8 + newJsonBuf.length + binaryChunk.length;
+  const jsonSectionLength = 8 + newJsonBuf.length;
+  let padding = Buffer.alloc(0);
+  if (hasBinaryChunk && (12 + jsonSectionLength) % 4 !== 0) {
+    const padLen = 4 - ((12 + jsonSectionLength) % 4);
+    padding = Buffer.alloc(padLen, 0x20);
+  }
+
+  const totalLength = 12 + jsonSectionLength + padding.length + binaryChunk.length;
   const out = Buffer.alloc(totalLength);
 
-  // GLB header
-  out.writeUInt32LE(0x46546C67, 0); // magic: glTF
-  out.writeUInt32LE(2, 4);           // version: 2
+  out.writeUInt32LE(0x46546C67, 0);
+  out.writeUInt32LE(2, 4);
   out.writeUInt32LE(totalLength, 8);
-
-  // JSON chunk header
-  out.writeUInt32LE(newJsonBuf.length, 12);
-  out.writeUInt32LE(0x4E4F534A, 16); // type: JSON
-
-  // JSON data
+  out.writeUInt32LE(newJsonBuf.length + padding.length, 12);
+  out.writeUInt32LE(0x4E4F534A, 16);
   newJsonBuf.copy(out, 20);
-
-  // Binary chunk (if any)
-  if (binaryChunk.length > 0) {
-    binaryChunk.copy(out, 20 + newJsonBuf.length);
-  }
+  if (padding.length > 0) padding.copy(out, 20 + newJsonBuf.length);
+  if (binaryChunk.length > 0) binaryChunk.copy(out, 20 + newJsonBuf.length + padding.length);
 
   await fs.writeFile(glbPath, out);
 }
@@ -76,9 +107,6 @@ function buildTextureNameMap(document, globalUsedNames) {
   const root = document.getRoot();
   const textures = root.listTextures();
   const nameMap = new Map();
-  const usedNames = globalUsedNames;
-
-  // Build a lookup: texture → slot category (from material assignments)
   const textureCategories = new Map();
   for (const material of root.listMaterials()) {
     const slots = [
@@ -89,13 +117,15 @@ function buildTextureNameMap(document, globalUsedNames) {
       ['emissiveTexture', material.getEmissiveTexture()],
     ];
     for (const [slotName, texture] of slots) {
-      if (texture && !textureCategories.has(texture)) {
-        textureCategories.set(texture, classifyTextureSlot(slotName));
+      if (!texture) continue;
+      const category = classifyTextureSlot(slotName);
+      const existing = textureCategories.get(texture);
+      if (!existing || (categoryPriority[category] || 0) > (categoryPriority[existing] || 0)) {
+        textureCategories.set(texture, category);
       }
     }
   }
 
-  // Use the texture's ORIGINAL name from the GLB, with category suffix
   for (const texture of textures) {
     if (nameMap.has(texture)) continue;
 
@@ -103,25 +133,16 @@ function buildTextureNameMap(document, globalUsedNames) {
     const category = textureCategories.get(texture)
       || (listTextureSlots(texture).length > 0 ? classifyTextureSlot(listTextureSlots(texture)[0]) : 'other');
     const ext = mimeToExtension(texture.getMimeType());
-
-    // Use original texture name if available, otherwise fall back to "texture"
-    let baseName;
-    if (originalName) {
-      // Use original name as-is (sanitized), don't append category if name already implies it
-      baseName = sanitizeFilename(originalName);
-    } else {
-      baseName = `texture_${category}`;
-    }
+    const baseName = originalName ? sanitizeFilename(originalName) : `texture_${category}`;
 
     let finalName = baseName + ext;
-
     let counter = 2;
-    while (usedNames.has(finalName)) {
+    while (globalUsedNames.has(finalName)) {
       finalName = `${baseName}_${counter}${ext}`;
       counter++;
     }
 
-    usedNames.add(finalName);
+    globalUsedNames.add(finalName);
     nameMap.set(texture, { filename: finalName, category });
   }
 
@@ -130,11 +151,13 @@ function buildTextureNameMap(document, globalUsedNames) {
 
 export async function extractCommand(input, options, onProgress = defaultProgress) {
   const outdir = path.resolve(options.outdir);
-  const modelsDir = path.join(outdir, 'models');
-  const texturesDir = path.join(outdir, 'textures');
+  const separateFolders = options.separateFolders === true;
+
+  const modelsDir = separateFolders ? path.join(outdir, 'models') : outdir;
+  const texturesDir = separateFolders ? path.join(outdir, 'textures') : outdir;
 
   await fs.mkdir(modelsDir, { recursive: true });
-  await fs.mkdir(texturesDir, { recursive: true });
+  if (separateFolders) await fs.mkdir(texturesDir, { recursive: true });
 
   // Accept an array of paths (from server) or a glob string (from CLI)
   const glbFiles = Array.isArray(input) ? input : await resolveGlobs(input);
@@ -147,14 +170,33 @@ export async function extractCommand(input, options, onProgress = defaultProgres
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
   const manifest = {};
   const globalUsedNames = new Set();
-  // Dedup key (sourceName:width:height) → filename: deduplicates shared textures across GLBs
   const dedupIndex = new Map();
 
   for (const glbPath of glbFiles) {
     const baseName = path.basename(glbPath, '.glb');
     onProgress({ type: 'file-start', file: `${baseName}.glb`, message: `Processing: ${baseName}.glb` });
 
-    const document = await io.read(glbPath);
+    // Fix misaligned GLBs before reading (some exporters violate the 4-byte alignment spec)
+    const rawBuf = await fs.readFile(glbPath);
+    const alignedBuf = fixGlbAlignment(rawBuf);
+    let readPath = glbPath;
+    let tmpPath = null;
+    if (alignedBuf !== rawBuf) {
+      tmpPath = glbPath + '.aligned.tmp';
+      await fs.writeFile(tmpPath, alignedBuf);
+      readPath = tmpPath;
+    }
+    let document;
+    try {
+      document = await io.read(readPath);
+    } catch (readErr) {
+      // GLB may already have external texture URIs that can't be resolved — copy as-is
+      onProgress({ type: 'file-skip', file: `${baseName}.glb`, message: `  Skipped: already has external textures or unreadable (${readErr.message})\n` });
+      await fs.writeFile(path.join(modelsDir, `${baseName}.glb`), rawBuf);
+      continue;
+    } finally {
+      if (tmpPath) await fs.unlink(tmpPath).catch(() => {});
+    }
     const root = document.getRoot();
     const textures = root.listTextures();
 
@@ -169,7 +211,6 @@ export async function extractCommand(input, options, onProgress = defaultProgres
 
     let extractedCount = 0;
     let totalTextureBytes = 0;
-    // Maps texture object → actual filename used (may differ from nameMap if deduped)
     const dedupedNames = new Map();
 
     for (const texture of textures) {
@@ -178,8 +219,6 @@ export async function extractCommand(input, options, onProgress = defaultProgres
 
       const { filename, category } = nameMap.get(texture);
 
-      // Build dedup key from: original texture name + dimensions
-      // Textures with the same source name and size across GLBs are the same asset
       const sourceName = texture.getName() || '';
       let dedupKey = '';
       if (sourceName) {
@@ -191,17 +230,20 @@ export async function extractCommand(input, options, onProgress = defaultProgres
         }
       }
 
-      // Also compute pixel hash as fallback for unnamed textures or different names w/ same pixels
       const rawPixels = await sharp(Buffer.from(imageData)).raw().toBuffer();
       const pixelHash = crypto.createHash('sha256').update(rawPixels).digest('hex');
 
-      // Check both dedup strategies
       const existingByName = dedupKey ? dedupIndex.get(`name:${dedupKey}`) : null;
       const existingByHash = dedupIndex.get(`hash:${pixelHash}`);
       const existing = existingByName || existingByHash;
 
       if (existing) {
         dedupedNames.set(texture, existing);
+
+        const existingCategory = manifest[existing];
+        if ((categoryPriority[category] || 0) > (categoryPriority[existingCategory] || 0)) {
+          manifest[existing] = category;
+        }
 
         onProgress({
           type: 'texture-reused',
@@ -212,7 +254,6 @@ export async function extractCommand(input, options, onProgress = defaultProgres
           message: `  Reused: ${filename} → ${existing} (deduplicated)`,
         });
       } else {
-        // New unique texture — write to disk
         const texturePath = path.join(texturesDir, filename);
         await fs.writeFile(texturePath, imageData);
         if (dedupKey) dedupIndex.set(`name:${dedupKey}`, filename);
@@ -234,21 +275,17 @@ export async function extractCommand(input, options, onProgress = defaultProgres
       }
     }
 
-    // Build a map of image index → URI for patching the GLB after write
     const imageURIs = new Map();
-    const imageList = root.listTextures();
-    for (let i = 0; i < imageList.length; i++) {
-      const resolvedName = dedupedNames.get(imageList[i]);
+    const uriPrefix = separateFolders ? '../textures/' : '';
+    for (let i = 0; i < textures.length; i++) {
+      const resolvedName = dedupedNames.get(textures[i]);
       if (!resolvedName) continue;
-      imageURIs.set(i, '../textures/' + resolvedName);
-      imageList[i].setImage(null);
+      imageURIs.set(i, uriPrefix + resolvedName);
+      textures[i].setImage(null);
     }
 
     const outputGlbPath = path.join(modelsDir, `${baseName}.glb`);
     await io.write(outputGlbPath, document);
-
-    // Patch the GLB JSON chunk to add URI references to external textures
-    // (gltf-transform strips URIs when writing GLB format)
     await patchGlbImageURIs(outputGlbPath, imageURIs);
 
     const originalSize = (await fs.stat(glbPath)).size;

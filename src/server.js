@@ -7,7 +7,6 @@ import chokidar from 'chokidar';
 import open from 'open';
 import { extractCommand } from './extract.js';
 import { compressCommand } from './compress.js';
-import { formatBytes } from './utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +14,6 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// State
 const watchedFiles = new Map();
 const sseClients = [];
 let isProcessing = false;
@@ -24,9 +22,9 @@ let watcher = null;
 let settings = {
   watchFolder: '',
   outputDir: '',
+  separateFolders: false,
 };
 
-// SSE
 function broadcast(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of sseClients) {
@@ -38,7 +36,6 @@ function getSnapshot() {
   return Array.from(watchedFiles.values());
 }
 
-// Watcher
 async function startWatcher() {
   if (watcher) await watcher.close();
   watchedFiles.clear();
@@ -74,7 +71,6 @@ async function startWatcher() {
   });
 }
 
-// Routes
 app.get('/api/files', (req, res) => {
   res.json(getSnapshot());
 });
@@ -84,16 +80,18 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.post('/api/settings', async (req, res) => {
-  const { watchFolder, outputDir } = req.body;
+  const { watchFolder, outputDir, separateFolders } = req.body;
   let restart = false;
 
-  // Allow clearing the folders (empty string resets)
   if (watchFolder !== undefined && watchFolder !== settings.watchFolder) {
     settings.watchFolder = watchFolder ? path.resolve(watchFolder) : '';
     restart = true;
   }
   if (outputDir !== undefined) {
     settings.outputDir = outputDir ? path.resolve(outputDir) : '';
+  }
+  if (separateFolders !== undefined) {
+    settings.separateFolders = !!separateFolders;
   }
   if (restart) await startWatcher();
   res.json(settings);
@@ -118,19 +116,16 @@ app.post('/api/extract', async (req, res) => {
       return res.status(400).json({ error: 'No files to process' });
     }
 
-    // Mark all as extracting
     for (const entry of targets) {
       entry.status = 'extracting';
       watchedFiles.set(entry.name, entry);
       broadcast('file-updated', entry);
     }
 
-    // Extract all files in a single call so manifest + dedup work correctly
     const allPaths = targets.map((t) => t.path);
     try {
-      const manifest = await extractCommand(allPaths, { outdir: settings.outputDir }, (e) => {
+      const manifest = await extractCommand(allPaths, { outdir: settings.outputDir, separateFolders: settings.separateFolders }, (e) => {
         broadcast('extract-progress', e);
-        // Update individual file status when each file completes
         if (e.type === 'file-done' || e.type === 'file-skip') {
           const entry = targets.find((t) => t.name === e.file);
           if (entry) {
@@ -141,7 +136,6 @@ app.post('/api/extract', async (req, res) => {
         }
       });
 
-      // Mark any remaining as extracted
       for (const entry of targets) {
         if (entry.status === 'extracting') {
           entry.status = 'extracted';
@@ -178,7 +172,6 @@ app.post('/api/compress', async (req, res) => {
 
   try {
     const opts = {
-      outdir: undefined,
       basecolorSize: String(req.body.basecolorSize || 1024),
       normalSize: String(req.body.normalSize || 1024),
       ormSize: String(req.body.ormSize || 512),
@@ -187,9 +180,10 @@ app.post('/api/compress', async (req, res) => {
       quality: String(req.body.quality || 85),
       depth: String(req.body.depth || 8),
       format: req.body.format || 'png',
+      denoise: req.body.denoise || 'off',
     };
 
-    const texturesDir = path.join(settings.outputDir, 'textures');
+    const texturesDir = settings.separateFolders ? path.join(settings.outputDir, 'textures') : settings.outputDir;
     const result = await compressCommand(texturesDir, opts, (e) => {
       broadcast('compress-progress', e);
     });
@@ -203,7 +197,6 @@ app.post('/api/compress', async (req, res) => {
   }
 });
 
-// Browse folders
 app.get('/api/browse', async (req, res) => {
   try {
     const dir = req.query.dir ? path.resolve(req.query.dir) : os.homedir();
@@ -223,7 +216,6 @@ app.get('/api/browse', async (req, res) => {
   }
 });
 
-// Resolve a dropped folder to an absolute path using folder name + directory fingerprint
 app.post('/api/resolve-drop', async (req, res) => {
   const { name, entries: droppedEntries = [], nearPath = '' } = req.body;
   if (!name) return res.json({ path: null });
@@ -291,7 +283,6 @@ app.post('/api/resolve-drop', async (req, res) => {
 
   // If fingerprinting didn't work (empty folder), use proximity to nearPath
   if (nearPath) {
-    // Find the candidate that shares the longest common path prefix with nearPath
     let bestLen = 0;
     let bestPath = null;
     for (const candidate of validCandidates) {
@@ -310,7 +301,7 @@ app.post('/api/resolve-drop', async (req, res) => {
     if (bestPath) return res.json({ path: bestPath });
   }
 
-  // Last fallback: prefer paths under home directory
+  // Prefer paths under home directory
   const homePath = validCandidates.find((c) => c.startsWith(home));
   return res.json({ path: homePath || validCandidates[0] });
 });
@@ -322,7 +313,6 @@ app.get('/api/events', (req, res) => {
     Connection: 'keep-alive',
   });
 
-  // Send initial snapshot
   res.write(`event: snapshot\ndata: ${JSON.stringify(getSnapshot())}\n\n`);
   res.write(`event: status\ndata: ${JSON.stringify({ isProcessing })}\n\n`);
 
@@ -333,7 +323,6 @@ app.get('/api/events', (req, res) => {
   });
 });
 
-// Start
 const PORT = process.env.PORT || 3000;
 
 await startWatcher();

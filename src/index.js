@@ -5,13 +5,17 @@ import { compressCommand } from './compress.js';
 
 const program = new Command();
 
-program.name('scene-optimizer').version('1.0.0').description('Extract and compress textures from GLB files');
+program
+  .name('scene-optimizer')
+  .version('1.0.0')
+  .description('Extract and compress textures from GLB files');
 
 program
   .command('extract')
-  .description('Extract textures from GLB files into models/ and textures/ folders')
+  .description('Extract textures from GLB files')
   .argument('<input>', 'GLB file, glob pattern, or folder containing GLBs')
   .option('-o, --outdir <dir>', 'Output directory', './output')
+  .option('-s, --separate-folders', 'Put models and textures in separate subfolders', false)
   .action(async (input, options) => {
     try {
       await extractCommand(input, options);
@@ -34,6 +38,7 @@ program
   .option('-q, --quality <n>', 'Compression quality 1-100', '85')
   .option('-d, --depth <n>', 'Bit depth: 8 or 16', '8')
   .option('-f, --format <fmt>', 'Output format: png, jpeg, webp', 'png')
+  .option('--denoise <level>', 'Denoise: off, light, medium, strong', 'off')
   .action(async (texturesFolder, options) => {
     try {
       await compressCommand(texturesFolder, options);
