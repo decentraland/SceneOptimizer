@@ -1018,6 +1018,378 @@
     .folder-drop-edit:focus {
       border-color: var(--dcl);
     }
+
+    /* ============================================
+       TEXTURE DEDUPLICATION
+       ============================================ */
+    .dedup-summary { margin-bottom: 16px; }
+
+    .dedup-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .dedup-group {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .dedup-group:hover {
+      border-color: var(--surface-border-hover);
+    }
+
+    .dedup-group-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+    }
+
+    .dedup-group-header input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--dcl);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .dedup-group-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .dedup-group-name {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dedup-group-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dedup-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .dedup-badge.identical {
+      background: var(--success-bg);
+      color: var(--success);
+    }
+
+    .dedup-badge.different {
+      background: var(--warning-bg);
+      color: var(--warning);
+    }
+
+    .dedup-compare-btn {
+      background: none;
+      border: 1px solid var(--surface-border);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: var(--radius-xs);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .dedup-compare-btn:hover {
+      border-color: var(--dcl);
+      color: var(--text);
+    }
+
+    .dedup-compare-panel {
+      border-top: 1px solid var(--surface-border);
+      padding: 16px;
+      background: var(--bg-secondary);
+    }
+
+    /* Compare Mode Tabs */
+    .compare-modes {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      width: fit-content;
+    }
+
+    .compare-mode-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: var(--radius-xs);
+      transition: all 0.2s;
+    }
+
+    .compare-mode-btn:hover {
+      color: var(--text-secondary);
+    }
+
+    .compare-mode-btn.active {
+      background: var(--dcl);
+      color: white;
+    }
+
+    /* Duplicate selector pills */
+    .compare-dupe-selector {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .compare-dupe-pill {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      color: var(--text-secondary);
+      padding: 3px 10px;
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .compare-dupe-pill:hover { border-color: var(--text-dim); }
+    .compare-dupe-pill.active { border-color: var(--dcl); color: var(--text); background: rgba(255, 45, 85, 0.1); }
+
+    /* Compare viewport */
+    .compare-viewport {
+      position: relative;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%) 0 0 / 20px 20px;
+    }
+
+    .compare-label {
+      position: absolute;
+      top: 8px;
+      padding: 3px 8px;
+      background: rgba(0, 0, 0, 0.7);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .compare-label.left { left: 8px; }
+    .compare-label.right { right: 8px; }
+
+    .compare-info {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    .compare-filename {
+      text-align: center;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      word-break: break-all;
+    }
+
+    .compare-glbs {
+      text-align: center;
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .compare-keep-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border-radius: var(--radius-xs);
+      font-size: 12px;
+    }
+
+    .compare-keep-selector label {
+      color: var(--text-muted);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .compare-keep-selector select {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      padding: 4px 8px;
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    /* 2-up */
+    .compare-2up {
+      display: flex;
+      gap: 12px;
+    }
+
+    .compare-2up-panel {
+      flex: 1;
+      position: relative;
+    }
+
+    .compare-2up-panel img {
+      width: 100%;
+      display: block;
+      border-radius: var(--radius-xs);
+    }
+
+    /* Swipe */
+    .compare-swipe {
+      position: relative;
+      cursor: ew-resize;
+      user-select: none;
+    }
+
+    .compare-swipe img {
+      width: 100%;
+      display: block;
+    }
+
+    .compare-swipe-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+    }
+
+    .compare-swipe-overlay img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .compare-swipe-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--dcl);
+      z-index: 10;
+      cursor: ew-resize;
+    }
+
+    .compare-swipe-handle::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 28px;
+      height: 28px;
+      background: var(--dcl);
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Onion Skin */
+    .compare-onion {
+      position: relative;
+    }
+
+    .compare-onion-stack {
+      position: relative;
+    }
+
+    .compare-onion-stack img {
+      width: 100%;
+      display: block;
+    }
+
+    .compare-onion-stack img.onion-top {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .compare-onion-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .compare-onion-controls label {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .compare-onion-controls input[type="range"] {
+      flex: 1;
+      accent-color: var(--dcl);
+    }
+
+    .compare-onion-controls .onion-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      min-width: 36px;
+      text-align: right;
+    }
+
+    /* Difference */
+    .compare-diff canvas {
+      width: 100%;
+      display: block;
+      border-radius: var(--radius-xs);
+    }
+
+    .compare-diff-info {
+      text-align: center;
+      font-size: 12px;
+      margin-top: 8px;
+      font-weight: 500;
+    }
+
+    .compare-diff-info.identical { color: var(--success); }
+    .compare-diff-info.different { color: var(--warning); }
   </style>
 </head>
 <body>
@@ -1222,7 +1594,7 @@
 
         <!-- Quality + Bit Depth -->
         <div class="settings-panel">
-          <div class="setting-item">
+          <div class="setting-item" id="qualitySetting">
             <label class="setting-label">Quality</label>
             <div class="quality-control">
               <input type="range" class="quality-slider" min="1" max="100" value="85" id="quality" oninput="syncQuality(this)">
@@ -1254,6 +1626,52 @@
         </div>
 
         <div class="progress-bar-wrap" id="compressProgress">
+          <div class="progress-bar indeterminate"></div>
+        </div>
+      </div>
+
+      <!-- TEXTURE DEDUPLICATION -->
+      <div class="card" id="dedupCard" style="display: none;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Texture Deduplication</div>
+            <div class="card-subtitle">Find and merge duplicate textures across GLBs</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary btn-sm" id="dedupScanBtn" onclick="dedupScanAction()">Scan for Duplicates</button>
+            <button class="btn btn-primary btn-sm" id="dedupApplyBtn" onclick="dedupApplyAction()" style="display:none">Delete Selected</button>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div id="dedupSummary" style="display: none;">
+          <div class="results-grid">
+            <div class="result-stat">
+              <div class="value" id="dedupGroupCount">0</div>
+              <div class="label">Groups</div>
+            </div>
+            <div class="result-stat">
+              <div class="value" id="dedupDupeCount">0</div>
+              <div class="label">Duplicates</div>
+            </div>
+            <div class="result-stat">
+              <div class="value reduction" id="dedupSavings">0 B</div>
+              <div class="label">Savings</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+        </div>
+
+        <!-- Select All / Deselect All -->
+        <div class="dedup-controls" id="dedupControls" style="display: none;">
+          <button class="btn btn-outline btn-sm" onclick="dedupSelectAll()">Select All</button>
+          <button class="btn btn-outline btn-sm" onclick="dedupDeselectAll()">Deselect All</button>
+        </div>
+
+        <!-- Group list -->
+        <div id="dedupGroups"></div>
+
+        <div class="progress-bar-wrap" id="dedupProgress">
           <div class="progress-bar indeterminate"></div>
         </div>
       </div>
@@ -1340,6 +1758,11 @@
         if (d.message) addLog(d.message, d.type === 'error' ? 'error' : 'info');
       });
 
+      es.addEventListener('dedup-progress', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.message) addLog(d.message, d.type === 'error' ? 'error' : d.type === 'dedup-scan-done' || d.type === 'dedup-apply-done' ? 'success' : 'info');
+      });
+
       es.addEventListener('compress-progress', (e) => {
         const d = JSON.parse(e.data);
         if (d.type === 'summary') {
@@ -1383,6 +1806,11 @@
 
     function syncQuality(input) {
       document.getElementById('qualityVal').textContent = input.value;
+    }
+
+    function syncFormatUI() {
+      const fmt = document.getElementById('format').value;
+      document.getElementById('qualitySetting').style.display = fmt === 'png' ? 'none' : '';
     }
 
     function toggleProgress(active) {
@@ -1432,6 +1860,7 @@
       const hasExtracted = files.some(f => f.status === 'extracted');
       document.getElementById('extractAllBtn').disabled = !hasFiles || processing;
       document.getElementById('compressBtn').disabled = !hasExtracted || processing;
+      if (typeof updateDedupButtons === 'function') updateDedupButtons();
     }
 
     function addLog(msg, cls = 'info') {
@@ -1700,6 +2129,420 @@
 
     // Initialize all drop zones
     document.querySelectorAll('.folder-drop').forEach(setupFolderDrop);
+
+    // === Dedup ===
+    let dedupScanResult = null;
+    let dedupSelectedGroups = new Set();
+    let dedupViewerState = {}; // groupId -> { mode, selectedDupe }
+
+    function updateDedupButtons() {
+      const hasExtracted = files.some(f => f.status === 'extracted');
+      const card = document.getElementById('dedupCard');
+      if (hasExtracted) card.style.display = '';
+
+      const btn = document.getElementById('dedupScanBtn');
+      btn.disabled = processing;
+
+      const applyBtn = document.getElementById('dedupApplyBtn');
+      applyBtn.style.display = dedupSelectedGroups.size > 0 ? '' : 'none';
+      applyBtn.disabled = processing;
+    }
+
+    async function dedupScanAction() {
+      addLog('Scanning for duplicate textures...', 'info');
+      document.getElementById('dedupProgress').className = 'progress-bar-wrap active';
+      dedupScanResult = null;
+      dedupSelectedGroups.clear();
+      dedupViewerState = {};
+      document.getElementById('dedupGroups').innerHTML = '';
+      document.getElementById('dedupSummary').style.display = 'none';
+      document.getElementById('dedupControls').style.display = 'none';
+      document.getElementById('dedupApplyBtn').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/dedup/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const data = await res.json();
+        if (data.error) {
+          addLog('Dedup scan error: ' + data.error, 'error');
+        } else {
+          dedupScanResult = data;
+          // Select all by default
+          for (const g of data.groups) dedupSelectedGroups.add(g.id);
+          renderDedupResults(data);
+          addLog('Dedup scan complete!', 'success');
+        }
+      } catch (e) {
+        addLog('Dedup scan failed: ' + e.message, 'error');
+      }
+      document.getElementById('dedupProgress').className = 'progress-bar-wrap';
+    }
+
+    async function dedupApplyAction() {
+      if (dedupSelectedGroups.size === 0) return;
+      addLog('Applying dedup changes...', 'info');
+      document.getElementById('dedupProgress').className = 'progress-bar-wrap active';
+
+      try {
+        const res = await fetch('/api/dedup/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupIds: Array.from(dedupSelectedGroups) }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          addLog('Dedup apply error: ' + data.error, 'error');
+        } else {
+          addLog(`Dedup applied! Rewrote ${data.rewrittenGlbs} GLB(s), deleted ${data.deletedFiles} file(s), saved ${formatBytes(data.savedBytes)}`, 'success');
+          // Clear results
+          dedupScanResult = null;
+          dedupSelectedGroups.clear();
+          document.getElementById('dedupGroups').innerHTML = '';
+          document.getElementById('dedupSummary').style.display = 'none';
+          document.getElementById('dedupControls').style.display = 'none';
+          document.getElementById('dedupApplyBtn').style.display = 'none';
+        }
+      } catch (e) {
+        addLog('Dedup apply failed: ' + e.message, 'error');
+      }
+      document.getElementById('dedupProgress').className = 'progress-bar-wrap';
+    }
+
+    function renderDedupResults(data) {
+      document.getElementById('dedupGroupCount').textContent = data.totalGroups;
+      document.getElementById('dedupDupeCount').textContent = data.totalDuplicates;
+      document.getElementById('dedupSavings').textContent = formatBytes(data.totalSavings);
+      document.getElementById('dedupSummary').style.display = '';
+
+      if (data.groups.length > 0) {
+        document.getElementById('dedupControls').style.display = '';
+        updateDedupButtons();
+      }
+
+      const container = document.getElementById('dedupGroups');
+      container.innerHTML = '';
+
+      for (const group of data.groups) {
+        const el = document.createElement('div');
+        el.className = 'dedup-group';
+        el.dataset.groupId = group.id;
+
+        const dupeCount = group.duplicates.length;
+        const savings = formatBytes(group.savingsBytes);
+        const matchBadge = group.pixelMatch
+          ? '<span class="dedup-badge identical">identical</span>'
+          : '<span class="dedup-badge different">pixels differ</span>';
+
+        const dupeLines = group.duplicates.map(d => {
+          const refs = d.referencedBy || [];
+          if (refs.length === 0) return `${d.filename} <span style="color:var(--text-dim)">(orphan)</span>`;
+          return `${d.filename} <span style="color:var(--warning)">(${refs.join(', ')} → ${group.canonical.filename})</span>`;
+        }).join('<br>');
+
+        el.innerHTML = `
+          <div class="dedup-group-header">
+            <input type="checkbox" ${dedupSelectedGroups.has(group.id) ? 'checked' : ''} data-group-id="${group.id}">
+            <div class="dedup-group-info">
+              <div class="dedup-group-name" style="color:var(--success)">Keep: ${group.canonical.filename}</div>
+              <div class="dedup-group-meta">
+                ${dupeCount} duplicate${dupeCount > 1 ? 's' : ''} &middot; ${savings} savings &middot; ${matchBadge}
+              </div>
+              <div class="dedup-group-meta" style="margin-top:2px; color: var(--error); flex-direction:column; align-items:flex-start; line-height:1.5;">
+                ${dupeLines}
+              </div>
+            </div>
+            <button class="dedup-compare-btn" data-group-id="${group.id}">Compare</button>
+          </div>
+          <div class="dedup-compare-panel" style="display: none;" id="compare-${group.id}"></div>
+        `;
+
+        // Checkbox handler
+        el.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
+          if (e.target.checked) dedupSelectedGroups.add(group.id);
+          else dedupSelectedGroups.delete(group.id);
+          updateDedupButtons();
+        });
+
+        // Compare toggle
+        el.querySelector('.dedup-compare-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const panel = document.getElementById(`compare-${group.id}`);
+          if (panel.style.display === 'none') {
+            panel.style.display = '';
+            if (!dedupViewerState[group.id]) {
+              dedupViewerState[group.id] = { mode: '2up', selectedDupe: 0 };
+            }
+            renderComparePanel(group);
+          } else {
+            panel.style.display = 'none';
+          }
+        });
+
+        container.appendChild(el);
+      }
+    }
+
+    function dedupSelectAll() {
+      if (!dedupScanResult) return;
+      for (const g of dedupScanResult.groups) dedupSelectedGroups.add(g.id);
+      document.querySelectorAll('.dedup-group input[type="checkbox"]').forEach(cb => cb.checked = true);
+      updateDedupButtons();
+    }
+
+    function dedupDeselectAll() {
+      dedupSelectedGroups.clear();
+      document.querySelectorAll('.dedup-group input[type="checkbox"]').forEach(cb => cb.checked = false);
+      updateDedupButtons();
+    }
+
+    // === Image Comparison Viewer ===
+
+    function renderComparePanel(group) {
+      const state = dedupViewerState[group.id];
+      const panel = document.getElementById(`compare-${group.id}`);
+      const dupe = group.duplicates[state.selectedDupe];
+      const canonicalUrl = `/api/dedup/texture/${encodeURIComponent(group.canonical.filename)}`;
+      const dupeUrl = `/api/dedup/texture/${encodeURIComponent(dupe.filename)}`;
+
+      let html = '';
+
+      // Mode tabs
+      html += `<div class="compare-modes">
+        <button class="compare-mode-btn ${state.mode === '2up' ? 'active' : ''}" data-mode="2up">2-up</button>
+        <button class="compare-mode-btn ${state.mode === 'swipe' ? 'active' : ''}" data-mode="swipe">Swipe</button>
+        <button class="compare-mode-btn ${state.mode === 'onion' ? 'active' : ''}" data-mode="onion">Onion Skin</button>
+        <button class="compare-mode-btn ${state.mode === 'diff' ? 'active' : ''}" data-mode="diff">Difference</button>
+      </div>`;
+
+      // Dupe selector (if multiple)
+      if (group.duplicates.length > 1) {
+        html += '<div class="compare-dupe-selector">';
+        for (let i = 0; i < group.duplicates.length; i++) {
+          html += `<button class="compare-dupe-pill ${i === state.selectedDupe ? 'active' : ''}" data-dupe-idx="${i}">${group.duplicates[i].filename}</button>`;
+        }
+        html += '</div>';
+      }
+
+      html += '<div class="compare-viewport-container"></div>';
+      panel.innerHTML = html;
+
+      // Wire mode buttons
+      panel.querySelectorAll('.compare-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.mode = btn.dataset.mode;
+          renderComparePanel(group);
+        });
+      });
+
+      // Wire dupe selector
+      panel.querySelectorAll('.compare-dupe-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.selectedDupe = parseInt(btn.dataset.dupeIdx);
+          renderComparePanel(group);
+        });
+      });
+
+      // Render selected mode — enrich canonical with referencedBy from group
+      const canonicalWithRefs = { ...group.canonical, referencedBy: group.canonicalReferencedBy };
+      const viewport = panel.querySelector('.compare-viewport-container');
+      renderCompareMode(viewport, state.mode, canonicalUrl, dupeUrl, canonicalWithRefs, dupe);
+    }
+
+    function renderCompareMode(container, mode, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo) {
+      if (mode === '2up') render2Up(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo);
+      else if (mode === 'swipe') renderSwipe(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo);
+      else if (mode === 'onion') renderOnion(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo);
+      else if (mode === 'diff') renderDiff(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo);
+    }
+
+    function dupeStatusText(dupeInfo, canonicalFilename) {
+      const refs = dupeInfo.referencedBy || [];
+      if (refs.length === 0) {
+        return '<span style="color:var(--text-dim)">Orphan file — not used by any GLB (safe to delete)</span>';
+      }
+      return '<span style="color:var(--warning)">Used by: ' + refs.join(', ') + ' → will redirect to <b>' + canonicalFilename + '</b></span>';
+    }
+
+    function canonStatusText(canonicalInfo) {
+      const refs = canonicalInfo.referencedBy || [];
+      if (refs.length === 0) return '<span style="color:var(--text-dim)">Not directly used by any GLB</span>';
+      return 'Used by: ' + refs.join(', ');
+    }
+
+    function render2Up(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo) {
+      container.innerHTML = `
+        <div class="compare-2up">
+          <div class="compare-2up-panel">
+            <div class="compare-viewport">
+              <div class="compare-label left">Keep</div>
+              <img src="${canonicalUrl}" alt="Canonical">
+            </div>
+            <div class="compare-filename">${canonicalInfo.filename}</div>
+            <div class="compare-info">${canonicalInfo.width}x${canonicalInfo.height} &middot; ${formatBytes(canonicalInfo.size)}</div>
+            <div class="compare-glbs">${canonStatusText(canonicalInfo)}</div>
+          </div>
+          <div class="compare-2up-panel">
+            <div class="compare-viewport">
+              <div class="compare-label left" style="background:rgba(255,77,77,0.8)">Delete</div>
+              <img src="${dupeUrl}" alt="Duplicate">
+            </div>
+            <div class="compare-filename">${dupeInfo.filename}</div>
+            <div class="compare-info">${dupeInfo.width}x${dupeInfo.height} &middot; ${formatBytes(dupeInfo.size)}</div>
+            <div class="compare-glbs">${dupeStatusText(dupeInfo, canonicalInfo.filename)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSwipe(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo) {
+      container.innerHTML = `
+        <div class="compare-viewport compare-swipe" style="position:relative;">
+          <div class="compare-label left">Keep: ${canonicalInfo.filename}</div>
+          <div class="compare-label right" style="background:rgba(255,77,77,0.8)">Delete: ${dupeInfo.filename}</div>
+          <img src="${canonicalUrl}" style="width:100%;display:block;" alt="Canonical">
+          <div class="compare-swipe-overlay" style="clip-path: inset(0 50% 0 0);">
+            <img src="${dupeUrl}" alt="Duplicate">
+          </div>
+          <div class="compare-swipe-handle" style="left: 50%;"></div>
+        </div>
+        <div class="compare-info">${canonicalInfo.filename} (${canonicalInfo.width}x${canonicalInfo.height}) vs ${dupeInfo.filename} (${dupeInfo.width}x${dupeInfo.height})</div>
+      `;
+
+      const swipe = container.querySelector('.compare-swipe');
+      const overlay = swipe.querySelector('.compare-swipe-overlay');
+      const handle = swipe.querySelector('.compare-swipe-handle');
+      let dragging = false;
+
+      function updatePosition(clientX) {
+        const rect = swipe.getBoundingClientRect();
+        let pct = ((clientX - rect.left) / rect.width) * 100;
+        pct = Math.max(0, Math.min(100, pct));
+        overlay.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
+        handle.style.left = pct + '%';
+      }
+
+      swipe.addEventListener('mousedown', (e) => { dragging = true; updatePosition(e.clientX); });
+      window.addEventListener('mousemove', (e) => { if (dragging) updatePosition(e.clientX); });
+      window.addEventListener('mouseup', () => { dragging = false; });
+
+      swipe.addEventListener('touchstart', (e) => { dragging = true; updatePosition(e.touches[0].clientX); }, { passive: true });
+      window.addEventListener('touchmove', (e) => { if (dragging) updatePosition(e.touches[0].clientX); }, { passive: true });
+      window.addEventListener('touchend', () => { dragging = false; });
+    }
+
+    function renderOnion(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo) {
+      container.innerHTML = `
+        <div class="compare-onion">
+          <div class="compare-viewport compare-onion-stack">
+            <div class="compare-label left">Keep: ${canonicalInfo.filename}</div>
+            <div class="compare-label right" style="background:rgba(255,77,77,0.8)">Delete: ${dupeInfo.filename}</div>
+            <img src="${canonicalUrl}" alt="Canonical">
+            <img src="${dupeUrl}" class="onion-top" style="opacity: 0.5;" alt="Duplicate">
+          </div>
+          <div class="compare-onion-controls">
+            <label>${canonicalInfo.filename}</label>
+            <input type="range" min="0" max="100" value="50" class="onion-slider">
+            <label>${dupeInfo.filename}</label>
+            <span class="onion-value">50%</span>
+          </div>
+        </div>
+        <div class="compare-info">${canonicalInfo.filename} (${canonicalInfo.width}x${canonicalInfo.height}) vs ${dupeInfo.filename} (${dupeInfo.width}x${dupeInfo.height})</div>
+      `;
+
+      const slider = container.querySelector('.onion-slider');
+      const topImg = container.querySelector('.onion-top');
+      const valueLabel = container.querySelector('.onion-value');
+
+      slider.addEventListener('input', () => {
+        const val = slider.value;
+        topImg.style.opacity = val / 100;
+        valueLabel.textContent = val + '%';
+      });
+    }
+
+    function renderDiff(container, canonicalUrl, dupeUrl, canonicalInfo, dupeInfo) {
+      container.innerHTML = `
+        <div class="compare-diff">
+          <div class="compare-viewport">
+            <canvas></canvas>
+          </div>
+          <div class="compare-diff-info">Loading...</div>
+        </div>
+        <div class="compare-info">${canonicalInfo.filename} (${canonicalInfo.width}x${canonicalInfo.height}) vs ${dupeInfo.filename} (${dupeInfo.width}x${dupeInfo.height})</div>
+      `;
+
+      const canvas = container.querySelector('canvas');
+      const infoEl = container.querySelector('.compare-diff-info');
+
+      const imgA = new Image();
+      const imgB = new Image();
+      let loadedCount = 0;
+
+      function onBothLoaded() {
+        const w = Math.max(imgA.naturalWidth, imgB.naturalWidth);
+        const h = Math.max(imgA.naturalHeight, imgB.naturalHeight);
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+
+        // Draw A
+        const tempA = document.createElement('canvas');
+        tempA.width = w; tempA.height = h;
+        const ctxA = tempA.getContext('2d');
+        ctxA.drawImage(imgA, 0, 0, w, h);
+        const dataA = ctxA.getImageData(0, 0, w, h);
+
+        // Draw B
+        const tempB = document.createElement('canvas');
+        tempB.width = w; tempB.height = h;
+        const ctxB = tempB.getContext('2d');
+        ctxB.drawImage(imgB, 0, 0, w, h);
+        const dataB = ctxB.getImageData(0, 0, w, h);
+
+        // Compute diff
+        const diff = ctx.createImageData(w, h);
+        let diffPixels = 0;
+        const amp = 10;
+
+        for (let i = 0; i < dataA.data.length; i += 4) {
+          const dr = Math.abs(dataA.data[i] - dataB.data[i]);
+          const dg = Math.abs(dataA.data[i + 1] - dataB.data[i + 1]);
+          const db = Math.abs(dataA.data[i + 2] - dataB.data[i + 2]);
+
+          if (dr > 0 || dg > 0 || db > 0) diffPixels++;
+
+          diff.data[i] = Math.min(255, dr * amp);
+          diff.data[i + 1] = Math.min(255, dg * amp);
+          diff.data[i + 2] = Math.min(255, db * amp);
+          diff.data[i + 3] = 255;
+        }
+
+        ctx.putImageData(diff, 0, 0);
+
+        const totalPixels = w * h;
+        if (diffPixels === 0) {
+          infoEl.className = 'compare-diff-info identical';
+          infoEl.textContent = 'Identical — 0 pixel differences';
+        } else {
+          const pct = ((diffPixels / totalPixels) * 100).toFixed(2);
+          infoEl.className = 'compare-diff-info different';
+          infoEl.textContent = `${diffPixels.toLocaleString()} pixels differ (${pct}%)`;
+        }
+      }
+
+      imgA.onload = () => { if (++loadedCount === 2) onBothLoaded(); };
+      imgB.onload = () => { if (++loadedCount === 2) onBothLoaded(); };
+      imgA.onerror = () => { infoEl.textContent = 'Failed to load canonical image'; };
+      imgB.onerror = () => { infoEl.textContent = 'Failed to load duplicate image'; };
+
+      imgA.crossOrigin = 'anonymous';
+      imgB.crossOrigin = 'anonymous';
+      imgA.src = canonicalUrl;
+      imgB.src = dupeUrl;
+    }
+
+    // === Format UI toggle ===
+    document.getElementById('format').addEventListener('change', syncFormatUI);
+    syncFormatUI();
 
     // === Init ===
     loadSettings();

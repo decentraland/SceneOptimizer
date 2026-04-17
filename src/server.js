@@ -7,6 +7,7 @@ import chokidar from 'chokidar';
 import open from 'open';
 import { extractCommand } from './extract.js';
 import { compressCommand } from './compress.js';
+import { dedupScan, dedupApply } from './dedup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -197,6 +198,73 @@ app.post('/api/compress', async (req, res) => {
   }
 });
 
+// === Dedup endpoints ===
+
+let dedupScanResult = null;
+
+app.post('/api/dedup/scan', async (req, res) => {
+  if (isProcessing) return res.status(409).json({ error: 'Processing in progress' });
+
+  const folder = settings.outputDir;
+  if (!folder) return res.status(400).json({ error: 'No output folder configured' });
+
+  isProcessing = true;
+  broadcast('status', { isProcessing: true });
+
+  try {
+    const result = await dedupScan(folder, { separateFolders: settings.separateFolders }, (e) => {
+      broadcast('dedup-progress', e);
+    });
+
+    dedupScanResult = result;
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Dedup scan error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    isProcessing = false;
+    broadcast('status', { isProcessing: false });
+  }
+});
+
+app.post('/api/dedup/apply', async (req, res) => {
+  if (isProcessing) return res.status(409).json({ error: 'Processing in progress' });
+
+  const { groupIds } = req.body;
+  if (!groupIds || !dedupScanResult) return res.status(400).json({ error: 'No scan result or groups' });
+
+  isProcessing = true;
+  broadcast('status', { isProcessing: true });
+
+  try {
+
+    const folder = settings.outputDir;
+    const result = await dedupApply(folder, groupIds, dedupScanResult, { separateFolders: settings.separateFolders }, (e) => {
+      broadcast('dedup-progress', e);
+    });
+
+    dedupScanResult = null;
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    isProcessing = false;
+    broadcast('status', { isProcessing: false });
+  }
+});
+
+app.get('/api/dedup/texture/:filename', async (req, res) => {
+  try {
+    const dir = settings.separateFolders ? path.join(settings.outputDir, 'textures') : settings.outputDir;
+    const filePath = path.join(dir, req.params.filename);
+    // Prevent path traversal
+    if (!filePath.startsWith(dir)) return res.status(403).json({ error: 'Forbidden' });
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(404).json({ error: 'Not found' });
+  }
+});
+
 app.get('/api/browse', async (req, res) => {
   try {
     const dir = req.query.dir ? path.resolve(req.query.dir) : os.homedir();
@@ -321,6 +389,12 @@ app.get('/api/events', (req, res) => {
     const idx = sseClients.indexOf(res);
     if (idx >= 0) sseClients.splice(idx, 1);
   });
+});
+
+// Global JSON error handler (prevents Express from returning HTML error pages)
+app.use((err, req, res, _next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 3000;
