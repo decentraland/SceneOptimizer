@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { extractCommand } from './extract.js';
 import { compressCommand } from './compress.js';
+import { dedupScan, dedupApply } from './dedup.js';
 
 const program = new Command();
 
@@ -42,6 +43,31 @@ program
   .action(async (texturesFolder, options) => {
     try {
       await compressCommand(texturesFolder, options);
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('dedup')
+  .description('Find and merge duplicate textures across GLBs')
+  .argument('<folder>', 'Folder containing GLBs and textures (output from extract)')
+  .option('-s, --separate-folders', 'Models and textures are in separate subfolders', false)
+  .option('--apply', 'Apply changes (rewrite GLBs + delete duplicates). Without this flag, only scans.', false)
+  .action(async (folder, options) => {
+    try {
+      const result = await dedupScan(folder, { separateFolders: options.separateFolders });
+      if (result.totalGroups === 0) {
+        console.log('No duplicates found.');
+        return;
+      }
+      if (!options.apply) {
+        console.log('\nRun with --apply to rewrite GLBs and delete duplicates.');
+        return;
+      }
+      const groupIds = result.groups.map(g => g.id);
+      await dedupApply(folder, groupIds, result, { separateFolders: options.separateFolders });
     } catch (e) {
       console.error(e.message);
       process.exit(1);

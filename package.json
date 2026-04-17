@@ -15,6 +15,7 @@
     "@gltf-transform/core": "^4.3.0",
     "@gltf-transform/extensions": "^4.3.0",
     "@gltf-transform/functions": "^4.3.0",
+    "@wasm-codecs/oxipng": "^1.0.1",
     "chokidar": "^5.0.0",
     "commander": "^14.0.0",
     "express": "^5.2.1",
