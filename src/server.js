@@ -1,7 +1,9 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import open from 'open';
@@ -237,7 +239,6 @@ app.post('/api/dedup/apply', async (req, res) => {
   broadcast('status', { isProcessing: true });
 
   try {
-
     const folder = settings.outputDir;
     const result = await dedupApply(folder, groupIds, dedupScanResult, { separateFolders: settings.separateFolders }, (e) => {
       broadcast('dedup-progress', e);
@@ -284,94 +285,95 @@ app.get('/api/browse', async (req, res) => {
   }
 });
 
-app.post('/api/resolve-drop', async (req, res) => {
-  const { name, entries: droppedEntries = [], nearPath = '' } = req.body;
-  if (!name) return res.json({ path: null });
+// ===================================================================
+// Folder fingerprinting — given a folder name + sample file sizes,
+// find the folder's absolute path on disk. Used by showDirectoryPicker()
+// and drag-and-drop, since browsers hide the real path for security.
+// ===================================================================
 
-  // Collect candidate paths via Spotlight
-  const candidates = [];
+function findFilesMacOS(anchorFile) {
+  const safeName = anchorFile.name.replace(/'/g, "\\'");
+  const cmd = `mdfind "kMDItemFSName == '${safeName}' && kMDItemFSSize == ${anchorFile.size}" 2>/dev/null | head -50`;
   try {
-    const { execSync } = await import('node:child_process');
-    const safeName = name.replace(/'/g, "\\'");
-    const cmd = `mdfind "kMDItemFSName == '${safeName}' && kMDItemContentType == 'public.folder'" 2>/dev/null | head -50`;
     const result = execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim();
-    if (result) candidates.push(...result.split('\n').filter(Boolean));
-  } catch {}
+    return result ? result.split('\n').filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
 
-  // Also check common locations
+function findFilesWindows(anchorFile) {
   const home = os.homedir();
-  for (const base of [
+  const searchRoots = [
+    path.join(home, 'Documents'),
     path.join(home, 'Desktop'),
     path.join(home, 'Downloads'),
-    path.join(home, 'Documents'),
+    path.join(home, 'Projects'),
     home,
-    path.dirname(settings.watchFolder),
-    path.dirname(settings.outputDir),
-  ]) {
-    const c = path.join(base, name);
-    if (!candidates.includes(c)) candidates.push(c);
+  ].filter(p => {
+    try { return statSync(p).isDirectory(); } catch { return false; }
+  });
+
+  if (searchRoots.length === 0) return [];
+
+  // Escape single quotes for PowerShell (double them)
+  const escName = anchorFile.name.replace(/'/g, "''");
+  const rootList = searchRoots.map(r => `'${r.replace(/'/g, "''")}'`).join(',');
+  const psCmd = `powershell.exe -NoProfile -Command "Get-ChildItem -Path ${rootList} -Recurse -File -Filter '${escName}' -ErrorAction SilentlyContinue | Where-Object { $_.Length -eq ${anchorFile.size} } | Select-Object -First 50 -ExpandProperty FullName"`;
+
+  try {
+    const result = execSync(psCmd, { encoding: 'utf8', timeout: 15000 }).trim();
+    return result ? result.split(/\r?\n/).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function findFilesByFingerprint(anchorFile) {
+  return process.platform === 'win32'
+    ? findFilesWindows(anchorFile)
+    : findFilesMacOS(anchorFile);
+}
+
+app.post('/api/resolve-by-fingerprint', async (req, res) => {
+  const { folderName, files = [] } = req.body;
+  if (!folderName || files.length === 0) {
+    return res.json({ path: null, candidates: [] });
   }
 
-  // Filter to only valid directories
-  const validCandidates = [];
-  for (const candidate of candidates) {
-    try {
-      const stat = await fs.stat(candidate);
-      if (stat.isDirectory()) validCandidates.push(candidate);
-    } catch {}
-  }
+  // Strategy: find the most unique file (largest size), search for it by exact size,
+  // then verify the parent folder has the expected name.
+  const sortedFiles = [...files].sort((a, b) => b.size - a.size);
+  const anchorFile = sortedFiles[0];
 
-  if (validCandidates.length === 0) return res.json({ path: null });
-  if (validCandidates.length === 1) return res.json({ path: validCandidates[0] });
+  let candidateDirs = [];
+  try {
+    const matches = findFilesByFingerprint(anchorFile);
+    candidateDirs = matches
+      .map(filePath => path.dirname(filePath))
+      .filter(dirPath => path.basename(dirPath) === folderName);
+  } catch {}
 
-  // Score each candidate by file fingerprint matching
-  if (droppedEntries.length > 0) {
-    let bestScore = 0;
-    let bestPath = null;
+  // Deduplicate
+  candidateDirs = [...new Set(candidateDirs)];
 
-    for (const candidate of validCandidates) {
-      let score = 0;
-      for (const entry of droppedEntries) {
-        try {
-          const fullPath = path.join(candidate, entry.path || entry.name);
-          const s = await fs.stat(fullPath);
-          if (entry.isDir ? s.isDirectory() : s.isFile()) score++;
-        } catch {}
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        bestPath = candidate;
-      }
+  // Verify each candidate by checking that all fingerprint files exist with matching sizes
+  const verifiedCandidates = [];
+  for (const dir of candidateDirs) {
+    let matches = 0;
+    for (const f of files) {
+      try {
+        const stat = await fs.stat(path.join(dir, f.name));
+        if (stat.size === f.size) matches++;
+      } catch {}
     }
-
-    if (bestPath && bestScore >= Math.min(droppedEntries.length, 2)) {
-      return res.json({ path: bestPath });
-    }
+    if (matches === files.length) verifiedCandidates.push(dir);
   }
 
-  // If fingerprinting didn't work (empty folder), use proximity to nearPath
-  if (nearPath) {
-    let bestLen = 0;
-    let bestPath = null;
-    for (const candidate of validCandidates) {
-      let common = 0;
-      const parts1 = candidate.split('/');
-      const parts2 = nearPath.split('/');
-      for (let i = 0; i < Math.min(parts1.length, parts2.length); i++) {
-        if (parts1[i] === parts2[i]) common++;
-        else break;
-      }
-      if (common > bestLen) {
-        bestLen = common;
-        bestPath = candidate;
-      }
-    }
-    if (bestPath) return res.json({ path: bestPath });
-  }
+  if (verifiedCandidates.length === 0) return res.json({ path: null, candidates: [] });
+  if (verifiedCandidates.length === 1) return res.json({ path: verifiedCandidates[0], candidates: verifiedCandidates });
 
-  // Prefer paths under home directory
-  const homePath = validCandidates.find((c) => c.startsWith(home));
-  return res.json({ path: homePath || validCandidates[0] });
+  return res.json({ path: null, candidates: verifiedCandidates });
 });
 
 app.get('/api/events', (req, res) => {

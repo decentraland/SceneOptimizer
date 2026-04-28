@@ -1019,6 +1019,43 @@
       border-color: var(--dcl);
     }
 
+    .folder-candidate-list {
+      width: 100%;
+      max-height: 200px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      pointer-events: auto;
+    }
+
+    .folder-candidate-title {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      pointer-events: auto;
+    }
+
+    .folder-candidate {
+      padding: 6px 10px;
+      border-radius: var(--radius-xs);
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: var(--text-secondary);
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      cursor: pointer;
+      transition: all 0.15s;
+      word-break: break-all;
+      pointer-events: auto;
+    }
+
+    .folder-candidate:hover {
+      border-color: var(--dcl);
+      color: var(--text);
+      background: rgba(255, 45, 85, 0.05);
+    }
+
     /* ============================================
        TEXTURE DEDUPLICATION
        ============================================ */
@@ -1994,56 +2031,161 @@
         if (items && items.length > 0) {
           const entry = items[0].webkitGetAsEntry?.();
           if (entry && entry.isDirectory) {
-            const folderName = entry.name;
+            dropEl.innerHTML = `
+              <input type="hidden" id="${targetId}" value="">
+              <div class="folder-drop-icon">⏳</div>
+              <div class="folder-drop-hint">Locating "${entry.name}"...</div>
+            `;
+            dropEl.classList.remove('has-path');
 
-            // Collect relative paths for fingerprinting
-            const relativePaths = [];
-            const readDir = (dirEntry, prefix) => new Promise((resolve) => {
-              dirEntry.createReader().readEntries((entries) => {
-                const promises = [];
-                for (const en of entries) {
-                  const relPath = prefix ? prefix + '/' + en.name : en.name;
-                  relativePaths.push({ name: en.name, path: relPath, isDir: en.isDirectory });
-                  if (en.isDirectory && !prefix) {
-                    promises.push(readDir(en, en.name));
-                  }
+            const files = await readDropEntriesForFingerprint(entry);
+            if (files.length > 0) {
+              try {
+                const res = await fetch('/api/resolve-by-fingerprint', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ folderName: entry.name, files }),
+                });
+                const data = await res.json();
+                if (data.path) { setFolderPath(dropEl, targetId, data.path); return; }
+                if (data.candidates && data.candidates.length > 1) {
+                  showCandidatePicker(dropEl, targetId, entry.name, data.candidates);
+                  return;
                 }
-                Promise.all(promises).then(resolve);
-              }, () => resolve());
-            });
+              } catch {}
+            }
 
-            await readDir(entry, '');
-
-            try {
-              const siblingId = targetId === 'watchFolder' ? 'outputDir' : 'watchFolder';
-              const siblingPath = document.getElementById(siblingId)?.value || '';
-              const res = await fetch('/api/resolve-drop', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  name: folderName,
-                  entries: relativePaths.slice(0, 50),
-                  nearPath: siblingPath,
-                }),
-              });
-              const data = await res.json();
-              if (data.path) {
-                setFolderPath(dropEl, targetId, data.path);
-                return;
-              }
-            } catch {}
+            showInlineEdit(dropEl, targetId, entry.name);
+            return;
           }
         }
 
-        // Fallback: inline edit
         showInlineEdit(dropEl, targetId);
       });
 
-      // Click → inline edit (but not when clicking on the edit input itself)
-      dropEl.addEventListener('click', (e) => {
+      // Click → native folder picker (if available), fallback to text input
+      dropEl.addEventListener('click', async (e) => {
         if (e.target.classList.contains('folder-drop-edit')) return;
         if (e.target.closest('.folder-drop-edit')) return;
+
+        if (typeof window.showDirectoryPicker === 'function') {
+          try {
+            const handle = await window.showDirectoryPicker();
+            await resolveFolderHandle(handle, dropEl, targetId);
+            return;
+          } catch (err) {
+            // User cancelled — do nothing
+            if (err.name === 'AbortError') return;
+            // Other error — fall through to inline edit
+          }
+        }
         showInlineEdit(dropEl, targetId);
+      });
+    }
+
+    function readDropEntriesForFingerprint(dirEntry) {
+      return new Promise((resolve) => {
+        const reader = dirEntry.createReader();
+        const allEntries = [];
+
+        const readBatch = () => {
+          reader.readEntries((entries) => {
+            if (entries.length === 0) {
+              // Done — now pick up to 3 file entries and read their sizes
+              const fileEntries = allEntries.filter(e => e.isFile).slice(0, 3);
+              if (fileEntries.length === 0) {
+                resolve([]);
+                return;
+              }
+              const pending = fileEntries.map(en => new Promise((res) => {
+                en.file(
+                  (file) => res({ name: en.name, size: file.size }),
+                  () => res(null)
+                );
+              }));
+              Promise.all(pending).then(results => {
+                resolve(results.filter(Boolean));
+              });
+            } else {
+              allEntries.push(...entries);
+              readBatch(); // keep reading until empty (Chrome batches)
+            }
+          }, () => {
+            resolve([]);
+          });
+        };
+
+        readBatch();
+      });
+    }
+
+    async function resolveFolderHandle(handle, dropEl, targetId) {
+      const folderName = handle.name;
+
+      // Show loading state
+      dropEl.innerHTML = `
+        <input type="hidden" id="${targetId}" value="">
+        <div class="folder-drop-icon">⏳</div>
+        <div class="folder-drop-hint">Locating "${folderName}"...</div>
+      `;
+      dropEl.classList.remove('has-path');
+
+      // Read up to 3 file sizes from the folder for fingerprinting
+      const files = [];
+      try {
+        for await (const entry of handle.values()) {
+          if (entry.kind === 'file' && files.length < 3) {
+            const file = await entry.getFile();
+            files.push({ name: entry.name, size: file.size });
+          }
+          if (files.length >= 3) break;
+        }
+      } catch {}
+
+      if (files.length === 0) {
+        // Empty folder — can't fingerprint, fall back to text input
+        showInlineEdit(dropEl, targetId, folderName);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/resolve-by-fingerprint', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folderName, files }),
+        });
+        const data = await res.json();
+
+        if (data.path) {
+          setFolderPath(dropEl, targetId, data.path);
+          return;
+        }
+        if (data.candidates && data.candidates.length > 1) {
+          showCandidatePicker(dropEl, targetId, folderName, data.candidates);
+          return;
+        }
+      } catch {}
+
+      // No match — fall back to text input
+      showInlineEdit(dropEl, targetId, folderName);
+    }
+
+    function showCandidatePicker(dropEl, targetId, folderName, candidates) {
+      let html = `<input type="hidden" id="${targetId}" value="">`;
+      html += `<div class="folder-candidate-title">Multiple "${folderName}" folders match — pick one:</div>`;
+      html += `<div class="folder-candidate-list">`;
+      for (const c of candidates) {
+        html += `<div class="folder-candidate" data-path="${c.replace(/"/g, '&quot;')}">${c}</div>`;
+      }
+      html += `</div>`;
+      dropEl.classList.remove('has-path');
+      dropEl.innerHTML = html;
+
+      dropEl.querySelectorAll('.folder-candidate').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setFolderPath(dropEl, targetId, btn.dataset.path);
+        });
       });
     }
 
