@@ -8,6 +8,8 @@ import open from 'open';
 import { extractCommand } from './extract.js';
 import { compressCommand } from './compress.js';
 import { dedupScan, dedupApply } from './dedup.js';
+import { atlasCommand, scanInputs as atlasScan } from './atlas.js';
+import { alphaExtractCommand } from './alphaExtract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -250,6 +252,110 @@ app.post('/api/dedup/apply', async (req, res) => {
   } finally {
     isProcessing = false;
     broadcast('status', { isProcessing: false });
+  }
+});
+
+// === Atlas endpoints ===
+
+app.post('/api/atlas/generate', async (req, res) => {
+  if (isProcessing) return res.status(409).json({ error: 'Processing in progress' });
+
+  const { inputDir, outputDir, size, margin, order } = req.body || {};
+  if (!inputDir || !outputDir) {
+    return res.status(400).json({ error: 'inputDir and outputDir are required' });
+  }
+
+  isProcessing = true;
+  broadcast('status', { isProcessing: true });
+
+  try {
+    const opts = {
+      size: parseInt(size, 10) || 1024,
+      margin: Math.max(0, parseInt(margin, 10) || 0),
+      order: Array.isArray(order) ? order : null,
+    };
+    const result = await atlasCommand(inputDir, outputDir, opts, (e) => {
+      broadcast('atlas-progress', e);
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    broadcast('atlas-progress', { type: 'error', message: err.message });
+    res.status(500).json({ error: err.message });
+  } finally {
+    isProcessing = false;
+    broadcast('status', { isProcessing: false });
+  }
+});
+
+app.post('/api/alpha/extract', async (req, res) => {
+  if (isProcessing) return res.status(409).json({ error: 'Processing in progress' });
+
+  const { inputDir, outputDir } = req.body || {};
+  if (!inputDir || !outputDir) {
+    return res.status(400).json({ error: 'inputDir and outputDir are required' });
+  }
+
+  isProcessing = true;
+  broadcast('status', { isProcessing: true });
+
+  try {
+    const result = await alphaExtractCommand(inputDir, outputDir, {}, (e) => {
+      broadcast('alpha-progress', e);
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    broadcast('alpha-progress', { type: 'error', message: err.message });
+    res.status(500).json({ error: err.message });
+  } finally {
+    isProcessing = false;
+    broadcast('status', { isProcessing: false });
+  }
+});
+
+// Directories the UI has scanned via /api/atlas/scan. The thumbnail
+// endpoint only serves files whose parent directory is in this set, so
+// a stray client can't ask the server to read arbitrary files on disk.
+const allowedScanDirs = new Set();
+
+app.get('/api/atlas/scan', async (req, res) => {
+  try {
+    const dir = req.query.dir;
+    if (!dir) return res.status(400).json({ error: 'dir query param required' });
+    const result = await atlasScan(dir);
+    allowedScanDirs.add(path.resolve(dir));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/atlas/thumb', async (req, res) => {
+  try {
+    const filePath = req.query.path ? path.resolve(req.query.path) : null;
+    if (!filePath || !filePath.toLowerCase().endsWith('.png')) {
+      return res.status(400).json({ error: 'png path required' });
+    }
+    const parent = path.dirname(filePath);
+    if (!allowedScanDirs.has(parent)) {
+      return res.status(403).json({ error: 'Folder not scanned via /api/atlas/scan' });
+    }
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(404).json({ error: 'Not found' });
+  }
+});
+
+app.get('/api/atlas/preview', async (req, res) => {
+  try {
+    const filePath = req.query.path ? path.resolve(req.query.path) : null;
+    if (!filePath) return res.status(400).json({ error: 'path required' });
+    const name = path.basename(filePath);
+    if (!/^atlas(_alpha|_auto_alpha)?_\d+\.png$/i.test(name)) {
+      return res.status(400).json({ error: 'Only atlas PNG previews are allowed' });
+    }
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(404).json({ error: 'Not found' });
   }
 });
 
