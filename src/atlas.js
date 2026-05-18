@@ -27,7 +27,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
 
   // 1. Scan PNGs (deterministic order: filename asc).
   const pngs = (await glob('*.png', { cwd: inDir, absolute: true, nocase: true }))
-    .filter((f) => !path.basename(f).match(/^atlas(_alpha)?_\d+\.png$/i))
+    .filter((f) => !path.basename(f).match(/^atlas(_alpha|_auto_alpha)?_\d+\.png$/i))
     .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
 
   if (pngs.length === 0) {
@@ -183,7 +183,19 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
   log(`Wrote ${path.basename(atlasPath)}`, 'success');
   log(`Wrote ${path.basename(metadataPath)}`, 'success');
 
-  // 8. Optional alpha atlas — only pair entries whose base actually landed in the main atlas.
+  // 8. Auto-generated alpha atlas — always emitted.
+  // Extracts the alpha channel of the composited atlas as a grayscale PNG
+  // (white = opaque, black = transparent). Ports `extract_alpha.py` but
+  // applied at atlas scale so it works regardless of whether any inputs
+  // had paired *_alpha.png siblings.
+  const autoAlphaPath = path.join(outDir, `atlas_auto_alpha_${size}.png`);
+  await sharp(atlasPath)
+    .extractChannel('alpha')
+    .png({ compressionLevel: 0, force: true })
+    .toFile(autoAlphaPath);
+  log(`Wrote ${path.basename(autoAlphaPath)}`, 'success');
+
+  // 9. Paired alpha atlas — only entries whose base actually landed in the main atlas.
   let alphaAtlasPath = null;
   let alphaMetadataPath = null;
   const placedBases = new Set(meta.images.map((i) => i.name));
@@ -253,6 +265,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     efficiency: meta.atlas.space_efficiency,
     atlasPath,
     metadataPath,
+    autoAlphaPath,
     alphaAtlasPath,
     alphaMetadataPath,
     message: `Atlas built: ${meta.images.length} image(s), ${meta.atlas.space_efficiency.toFixed(1)}% efficiency`,

@@ -9,6 +9,7 @@ import { extractCommand } from './extract.js';
 import { compressCommand } from './compress.js';
 import { dedupScan, dedupApply } from './dedup.js';
 import { atlasCommand } from './atlas.js';
+import { alphaExtractCommand } from './alphaExtract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -285,12 +286,37 @@ app.post('/api/atlas/generate', async (req, res) => {
   }
 });
 
+app.post('/api/alpha/extract', async (req, res) => {
+  if (isProcessing) return res.status(409).json({ error: 'Processing in progress' });
+
+  const { inputDir, outputDir } = req.body || {};
+  if (!inputDir || !outputDir) {
+    return res.status(400).json({ error: 'inputDir and outputDir are required' });
+  }
+
+  isProcessing = true;
+  broadcast('status', { isProcessing: true });
+
+  try {
+    const result = await alphaExtractCommand(inputDir, outputDir, {}, (e) => {
+      broadcast('alpha-progress', e);
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    broadcast('alpha-progress', { type: 'error', message: err.message });
+    res.status(500).json({ error: err.message });
+  } finally {
+    isProcessing = false;
+    broadcast('status', { isProcessing: false });
+  }
+});
+
 app.get('/api/atlas/preview', async (req, res) => {
   try {
     const filePath = req.query.path ? path.resolve(req.query.path) : null;
     if (!filePath) return res.status(400).json({ error: 'path required' });
     const name = path.basename(filePath);
-    if (!/^atlas(_alpha)?_\d+\.png$/i.test(name)) {
+    if (!/^atlas(_alpha|_auto_alpha)?_\d+\.png$/i.test(name)) {
       return res.status(400).json({ error: 'Only atlas PNG previews are allowed' });
     }
     res.sendFile(filePath);

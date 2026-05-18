@@ -1441,6 +1441,7 @@
     <div class="tabs" role="tablist">
       <button class="tab-btn active" data-tab="optimizer" role="tab">GLB Optimizer</button>
       <button class="tab-btn" data-tab="atlas" role="tab">UI Atlas Generator</button>
+      <button class="tab-btn" data-tab="alpha" role="tab">Image Alpha Generator</button>
     </div>
 
     <!-- MAIN -->
@@ -1837,6 +1838,75 @@
         </div>
 
       </div>
+
+      <div class="tab-panel" id="panel-alpha">
+
+        <!-- ALPHA FOLDERS -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Folders</div>
+              <div class="card-subtitle">Choose where to read images from and where to write the alpha textures</div>
+            </div>
+          </div>
+          <div class="folders-grid">
+            <div class="field">
+              <label class="field-label">Input Image Folder</label>
+              <div class="folder-drop" id="alphaInputDirDrop" data-target="alphaInputDir">
+                <input type="hidden" id="alphaInputDir">
+                <div class="folder-drop-icon">🖼️</div>
+                <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+              </div>
+            </div>
+            <div class="field">
+              <label class="field-label">Output Folder</label>
+              <div class="folder-drop" id="alphaOutputDirDrop" data-target="alphaOutputDir">
+                <input type="hidden" id="alphaOutputDir">
+                <div class="folder-drop-icon">📁</div>
+                <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+                <div class="folder-drop-sub">Each input produces a grayscale <code>&lt;name&gt;_alpha.png</code></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ALPHA ACTION -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Image Alpha Generator</div>
+              <div class="card-subtitle">Extract the alpha channel from each image as a separate grayscale texture (white = opaque, black = transparent). Supports PNG, JPG, BMP, TIFF, WebP.</div>
+            </div>
+            <button class="btn btn-primary" id="alphaExtractBtn" onclick="extractAlphas()" disabled>Extract Alphas</button>
+          </div>
+          <div class="progress-bar-wrap" id="alphaProgress"><div class="progress-bar"></div></div>
+        </div>
+
+        <!-- ALPHA RESULTS -->
+        <div class="card" id="alphaSummaryCard" style="display:none;">
+          <div class="card-header">
+            <div class="card-title">Image Alpha Generator Results</div>
+          </div>
+          <div class="results-grid">
+            <div class="result-stat">
+              <div class="value" id="alphaSumTotal">—</div>
+              <div class="label">Inputs</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value" id="alphaSumWritten">—</div>
+              <div class="label">Written</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value" id="alphaSumFailed">—</div>
+              <div class="label">Failed</div>
+            </div>
+          </div>
+          <div id="alphaSumOutput" style="padding:0 4px 12px;color:var(--text-secondary);font-size:12px;word-break:break-all;"></div>
+        </div>
+
+      </div>
     </div>
 
     <!-- FOOTER -->
@@ -1913,6 +1983,18 @@
         }
       });
 
+      es.addEventListener('alpha-progress', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.type === 'summary') {
+          showAlphaSummary(d);
+          addLog(d.message, 'success');
+        } else if (d.type === 'warning') {
+          addLog(d.message, 'warning');
+        } else if (d.message) {
+          addLog(d.message, d.type === 'error' ? 'error' : 'info');
+        }
+      });
+
       es.addEventListener('status', (e) => {
         const d = JSON.parse(e.data);
         processing = d.isProcessing;
@@ -1953,12 +2035,10 @@
 
     function toggleProgress(active) {
       const cls = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
-      const ex = document.getElementById('extractProgress');
-      const cm = document.getElementById('compressProgress');
-      const at = document.getElementById('atlasProgress');
-      if (ex) ex.className = cls;
-      if (cm) cm.className = cls;
-      if (at) at.className = cls;
+      for (const id of ['extractProgress', 'compressProgress', 'atlasProgress', 'alphaProgress']) {
+        const el = document.getElementById(id);
+        if (el) el.className = cls;
+      }
     }
 
     // === Render ===
@@ -2005,6 +2085,7 @@
       document.getElementById('compressBtn').disabled = !hasExtracted || processing;
       if (typeof updateDedupButtons === 'function') updateDedupButtons();
       if (typeof updateAtlasButton === 'function') updateAtlasButton();
+      if (typeof updateAlphaButton === 'function') updateAlphaButton();
     }
 
     function addLog(msg, cls = 'info') {
@@ -2704,8 +2785,9 @@
       const paths = [
         `Atlas: ${d.atlasPath}`,
         `Metadata: ${d.metadataPath}`,
-        d.alphaAtlasPath ? `Alpha atlas: ${d.alphaAtlasPath}` : null,
-        d.alphaMetadataPath ? `Alpha metadata: ${d.alphaMetadataPath}` : null,
+        d.autoAlphaPath ? `Auto alpha: ${d.autoAlphaPath}` : null,
+        d.alphaAtlasPath ? `Paired alpha atlas: ${d.alphaAtlasPath}` : null,
+        d.alphaMetadataPath ? `Paired alpha metadata: ${d.alphaMetadataPath}` : null,
         (d.skipped && d.skipped.length) ? `Skipped: ${d.skipped.map(s => `${s.name} (${s.reason})`).join(', ')}` : null,
       ].filter(Boolean).join('<br>');
       document.getElementById('atlasSumPaths').innerHTML = paths;
@@ -2758,6 +2840,59 @@
     }
     watchAtlasFolders();
     updateAtlasButton();
+
+    // === Alpha Extractor ===
+    function updateAlphaButton() {
+      const btn = document.getElementById('alphaExtractBtn');
+      if (!btn) return;
+      const hasIn = !!document.getElementById('alphaInputDir')?.value;
+      const hasOut = !!document.getElementById('alphaOutputDir')?.value;
+      btn.disabled = !hasIn || !hasOut || processing;
+    }
+
+    function showAlphaSummary(d) {
+      document.getElementById('alphaSumTotal').textContent = d.total;
+      document.getElementById('alphaSumWritten').textContent = d.written;
+      document.getElementById('alphaSumFailed').textContent = d.failed;
+      document.getElementById('alphaSumOutput').textContent = `Output folder: ${d.outputDir}`;
+      const card = document.getElementById('alphaSummaryCard');
+      card.style.display = '';
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    async function extractAlphas() {
+      const inputDir = document.getElementById('alphaInputDir')?.value;
+      const outputDir = document.getElementById('alphaOutputDir')?.value;
+      if (!inputDir || !outputDir) {
+        addLog('Please choose both input and output folders for alpha extraction', 'warning');
+        return;
+      }
+      document.getElementById('alphaSummaryCard').style.display = 'none';
+      addLog(`Extracting alpha textures from ${inputDir}...`, 'info');
+      try {
+        const res = await fetch('/api/alpha/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputDir, outputDir }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          addLog('Alpha extraction failed: ' + (data.error || res.statusText), 'error');
+        }
+      } catch (e) {
+        addLog('Alpha extraction failed: ' + e.message, 'error');
+      }
+    }
+
+    function watchAlphaFolders() {
+      const obs = new MutationObserver(updateAlphaButton);
+      for (const id of ['alphaInputDirDrop', 'alphaOutputDirDrop']) {
+        const el = document.getElementById(id);
+        if (el) obs.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });
+      }
+    }
+    watchAlphaFolders();
+    updateAlphaButton();
 
     // === Tabs ===
     document.querySelectorAll('.tab-btn').forEach(btn => {
