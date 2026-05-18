@@ -1419,6 +1419,146 @@
 
     .compare-diff-info.identical { color: var(--success); }
     .compare-diff-info.different { color: var(--warning); }
+
+    /* === Atlas input list (drag-to-reorder) === */
+    .atlas-input-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 420px;
+      overflow-y: auto;
+      padding: 4px;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-sm);
+    }
+    .atlas-input-row {
+      display: grid;
+      grid-template-columns: 28px 48px 1fr auto auto 28px;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 10px;
+      background: var(--surface);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      cursor: grab;
+      user-select: none;
+      transition: background .12s, border-color .12s, transform .12s;
+    }
+    .atlas-input-row:hover { background: var(--surface-hover); }
+    .atlas-input-row.dragging { opacity: .35; cursor: grabbing; }
+    .atlas-input-row.drag-over-before { border-top-color: var(--dcl); }
+    .atlas-input-row.drag-over-after  { border-bottom-color: var(--dcl); }
+    .atlas-input-handle {
+      color: var(--text-muted);
+      font-size: 18px;
+      line-height: 1;
+      text-align: center;
+    }
+    .atlas-input-thumb {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      background: repeating-conic-gradient(#1a1a1a 0 25%, #222 0 50%) 50% / 8px 8px;
+      border-radius: 4px;
+    }
+    .atlas-input-name {
+      font-size: 13px;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .atlas-input-name .pair-badge {
+      margin-left: 6px;
+      padding: 1px 6px;
+      font-size: 10px;
+      border-radius: 4px;
+      background: var(--purple);
+      color: #fff;
+      vertical-align: middle;
+    }
+    .atlas-input-dims {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .atlas-input-pos {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      min-width: 32px;
+      text-align: right;
+    }
+    .atlas-input-empty {
+      padding: 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .atlas-input-remove {
+      background: transparent;
+      border: 0;
+      color: var(--text-muted);
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      transition: background .12s, color .12s;
+    }
+    .atlas-input-remove:hover { background: var(--error-bg); color: var(--error); }
+
+    .atlas-capacity {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .atlas-capacity.ok      { background: var(--success-bg); color: var(--success); }
+    .atlas-capacity.warning { background: var(--warning-bg); color: var(--warning); }
+    .atlas-capacity.error   { background: var(--error-bg); color: var(--error); }
+
+    .atlas-excluded {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      font-size: 12px;
+      align-items: center;
+    }
+    .atlas-excluded-label { color: var(--text-secondary); margin-right: 4px; }
+    .atlas-excluded-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 999px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: color .12s, border-color .12s;
+    }
+    .atlas-excluded-chip:hover { color: var(--text); border-color: var(--dcl); }
+    .atlas-excluded-chip::after { content: "↺"; color: var(--text-muted); font-size: 11px; }
+    .atlas-excluded-clear {
+      background: transparent;
+      border: 0;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      margin-left: auto;
+      text-decoration: underline;
+    }
+    .atlas-excluded-clear:hover { color: var(--text); }
   </style>
 </head>
 <body>
@@ -1780,6 +1920,23 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- ATLAS INPUTS -->
+        <div class="card" id="atlasInputsCard" style="display:none;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Input Order</div>
+              <div class="card-subtitle">Drag rows to override the packing order. Defaults to largest area first.</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-secondary btn-sm" id="atlasOrderResetBtn" onclick="resetAtlasOrder()">Reset to auto</button>
+              <button class="btn btn-secondary btn-sm" id="atlasOrderRescanBtn" onclick="rescanAtlasInputs()">Rescan</button>
+            </div>
+          </div>
+          <div id="atlasCapacityBanner"></div>
+          <div id="atlasExcludedBar"></div>
+          <div class="atlas-input-list" id="atlasInputList"></div>
         </div>
 
         <!-- ATLAS SETTINGS -->
@@ -2770,6 +2927,17 @@
     syncFormatUI();
 
     // === Atlas ===
+    // Holds the user-arranged input list. Persists across renders so manual
+    // drag-reorder is preserved while the same input folder is selected.
+    // `manualOrder` is true once the user has dragged at least one row; until
+    // then we follow auto sort (largest area first, name asc).
+    // `atlasExcluded` holds names of inputs the user removed; they're kept
+    // out of the atlas but stay restorable via chips.
+    let atlasInputs = [];
+    let atlasManualOrder = false;
+    let atlasScannedDir = null;
+    let atlasExcluded = new Set();
+
     function updateAtlasButton() {
       const btn = document.getElementById('atlasGenerateBtn');
       if (!btn) return;
@@ -2777,6 +2945,227 @@
       const hasOut = !!document.getElementById('atlasOutputDir')?.value;
       btn.disabled = !hasIn || !hasOut || processing;
     }
+
+    function autoSortAtlasInputs(items) {
+      // Largest area first, tiebreak by filename asc — same as backend default.
+      return [...items].sort((a, b) => {
+        const aa = a.width * a.height;
+        const bb = b.width * b.height;
+        if (aa !== bb) return bb - aa;
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    // Simulate the backend's row-pack to predict whether everything fits.
+    // Pure dimension math, no canvas — fast enough to run on every reorder.
+    function simulateAtlasPack(items, size, margin) {
+      const fitted = [];
+      const overflow = [];
+      const rows = [];
+      let currentRow = null;
+      for (const it of items) {
+        const cellW = it.width + 2 * margin;
+        const cellH = it.height + 2 * margin;
+        if (cellW > size || cellH > size) {
+          overflow.push({ name: it.name, reason: `too large (${cellW}×${cellH})` });
+          continue;
+        }
+        if (!currentRow || currentRow.width + cellW > size) {
+          currentRow = { items: [it], width: cellW, height: cellH };
+          rows.push(currentRow);
+        } else {
+          currentRow.items.push(it);
+          currentRow.width += cellW;
+          currentRow.height = Math.max(currentRow.height, cellH);
+        }
+      }
+      let totalH = 0;
+      for (const row of rows) {
+        if (totalH + row.height > size) {
+          for (const it of row.items) overflow.push({ name: it.name, reason: 'height overflow' });
+          continue;
+        }
+        for (const it of row.items) fitted.push(it);
+        totalH += row.height;
+      }
+      return { fitted, overflow };
+    }
+
+    function renderCapacityBanner(included) {
+      const banner = document.getElementById('atlasCapacityBanner');
+      if (!banner) return;
+      if (included.length === 0) { banner.innerHTML = ''; return; }
+      const size = parseInt(document.getElementById('atlasSize')?.value, 10) || 1024;
+      const margin = Math.max(0, parseInt(document.getElementById('atlasMargin')?.value, 10) || 0);
+      const { overflow } = simulateAtlasPack(included, size, margin);
+      if (overflow.length === 0) {
+        banner.innerHTML = `<div class="atlas-capacity ok">✓ All ${included.length} image(s) fit in ${size}×${size}.</div>`;
+      } else {
+        const sample = overflow.slice(0, 5).map(o => `${o.name} (${o.reason})`).join(', ');
+        const more = overflow.length > 5 ? `, +${overflow.length - 5} more` : '';
+        banner.innerHTML = `<div class="atlas-capacity warning">⚠ ${overflow.length} of ${included.length} image(s) won't fit at ${size}×${size}: ${sample}${more}. Reorder, raise the atlas size, or remove them.</div>`;
+      }
+    }
+
+    function renderExcludedBar() {
+      const bar = document.getElementById('atlasExcludedBar');
+      if (!bar) return;
+      if (atlasExcluded.size === 0) { bar.innerHTML = ''; return; }
+      const chips = Array.from(atlasExcluded).map(n =>
+        `<span class="atlas-excluded-chip" data-name="${n.replace(/"/g, '&quot;')}">${n}</span>`).join('');
+      bar.innerHTML = `
+        <div class="atlas-excluded">
+          <span class="atlas-excluded-label">${atlasExcluded.size} excluded:</span>
+          ${chips}
+          <button class="atlas-excluded-clear" onclick="restoreAllAtlasInputs()">Restore all</button>
+        </div>`;
+      bar.querySelectorAll('.atlas-excluded-chip').forEach(chip => {
+        chip.addEventListener('click', () => restoreAtlasInput(chip.dataset.name));
+      });
+    }
+
+    function renderAtlasInputList() {
+      const card = document.getElementById('atlasInputsCard');
+      const list = document.getElementById('atlasInputList');
+      if (!atlasInputs.length) {
+        card.style.display = 'none';
+        list.innerHTML = '';
+        document.getElementById('atlasCapacityBanner').innerHTML = '';
+        document.getElementById('atlasExcludedBar').innerHTML = '';
+        return;
+      }
+      card.style.display = '';
+
+      const visible = atlasInputs.filter(it => !atlasExcluded.has(it.name));
+      list.innerHTML = visible.map((it, idx) => `
+        <div class="atlas-input-row" draggable="true" data-name="${it.name.replace(/"/g, '&quot;')}">
+          <div class="atlas-input-handle">⋮⋮</div>
+          <img class="atlas-input-thumb" src="/api/atlas/thumb?path=${encodeURIComponent(it.path)}" loading="lazy" alt="">
+          <div class="atlas-input-name">
+            ${it.name}
+            ${it.hasAlphaPair ? '<span class="pair-badge">α pair</span>' : ''}
+          </div>
+          <div class="atlas-input-dims">${it.width}×${it.height}</div>
+          <div class="atlas-input-pos">#${idx + 1}</div>
+          <button class="atlas-input-remove" data-name="${it.name.replace(/"/g, '&quot;')}" title="Remove from atlas">×</button>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.atlas-input-row').forEach(wireAtlasRowDnD);
+      list.querySelectorAll('.atlas-input-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation(); // don't trigger drag
+          excludeAtlasInput(btn.dataset.name);
+        });
+        // Buttons inside draggable rows: stop drag-start so clicking × never
+        // accidentally initiates a drag.
+        btn.addEventListener('mousedown', (e) => e.stopPropagation());
+        btn.addEventListener('dragstart', (e) => e.preventDefault());
+      });
+
+      const resetBtn = document.getElementById('atlasOrderResetBtn');
+      if (resetBtn) resetBtn.disabled = !atlasManualOrder;
+
+      renderCapacityBanner(visible);
+      renderExcludedBar();
+    }
+
+    function excludeAtlasInput(name) {
+      atlasExcluded.add(name);
+      renderAtlasInputList();
+    }
+
+    function restoreAtlasInput(name) {
+      atlasExcluded.delete(name);
+      renderAtlasInputList();
+    }
+
+    function restoreAllAtlasInputs() {
+      atlasExcluded.clear();
+      renderAtlasInputList();
+    }
+
+    let dragSrcName = null;
+    function wireAtlasRowDnD(row) {
+      row.addEventListener('dragstart', (e) => {
+        dragSrcName = row.dataset.name;
+        row.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox requires data to be set for the drag to fire.
+        try { e.dataTransfer.setData('text/plain', dragSrcName); } catch {}
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        document.querySelectorAll('.atlas-input-row').forEach(r =>
+          r.classList.remove('drag-over-before', 'drag-over-after'));
+        dragSrcName = null;
+      });
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = row.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        row.classList.toggle('drag-over-before', before);
+        row.classList.toggle('drag-over-after', !before);
+      });
+      row.addEventListener('dragleave', () => {
+        row.classList.remove('drag-over-before', 'drag-over-after');
+      });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetName = row.dataset.name;
+        if (!dragSrcName || dragSrcName === targetName) return;
+        const rect = row.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+
+        const srcIdx = atlasInputs.findIndex(it => it.name === dragSrcName);
+        let dstIdx = atlasInputs.findIndex(it => it.name === targetName);
+        if (srcIdx === -1 || dstIdx === -1) return;
+        const [moved] = atlasInputs.splice(srcIdx, 1);
+        if (srcIdx < dstIdx) dstIdx--;
+        dstIdx = before ? dstIdx : dstIdx + 1;
+        atlasInputs.splice(dstIdx, 0, moved);
+        atlasManualOrder = true;
+        renderAtlasInputList();
+      });
+    }
+
+    async function rescanAtlasInputs() {
+      const dir = document.getElementById('atlasInputDir')?.value;
+      atlasExcluded.clear();
+      if (!dir) { atlasInputs = []; atlasManualOrder = false; renderAtlasInputList(); return; }
+      try {
+        const res = await fetch(`/api/atlas/scan?dir=${encodeURIComponent(dir)}`);
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          addLog('Atlas scan failed: ' + (data.error || res.statusText), 'error');
+          atlasInputs = [];
+          atlasManualOrder = false;
+        } else {
+          atlasInputs = autoSortAtlasInputs(data.mainFiles || []);
+          atlasManualOrder = false;
+          atlasScannedDir = data.inputDir;
+          if (atlasInputs.length === 0) {
+            addLog(`No PNG files found in ${dir}`, 'warning');
+          }
+        }
+      } catch (e) {
+        addLog('Atlas scan failed: ' + e.message, 'error');
+        atlasInputs = [];
+        atlasManualOrder = false;
+      }
+      renderAtlasInputList();
+    }
+
+    function resetAtlasOrder() {
+      atlasInputs = autoSortAtlasInputs(atlasInputs);
+      atlasManualOrder = false;
+      renderAtlasInputList();
+    }
+
+    // Re-evaluate the capacity banner whenever atlas size / margin changes.
+    document.getElementById('atlasSize')?.addEventListener('change', renderAtlasInputList);
+    document.getElementById('atlasMargin')?.addEventListener('input', renderAtlasInputList);
 
     function showAtlasSummary(d) {
       document.getElementById('atlasSumCount').textContent = d.totalImages;
@@ -2810,14 +3199,44 @@
       const size = parseInt(document.getElementById('atlasSize').value, 10) || 1024;
       const margin = Math.max(0, parseInt(document.getElementById('atlasMargin').value, 10) || 0);
 
+      const visible = atlasInputs.filter(it => !atlasExcluded.has(it.name));
+      if (visible.length === 0) {
+        addLog('No images selected — restore or rescan inputs first', 'warning');
+        return;
+      }
+
+      // Pre-flight: warn if predicted overflow. The backend will still skip
+      // overflowing images and surface them in the summary, but a heads-up
+      // before a slow run is friendlier.
+      const { overflow } = simulateAtlasPack(visible, size, margin);
+      if (overflow.length > 0) {
+        const sample = overflow.slice(0, 5).map(o => `${o.name} (${o.reason})`).join(', ');
+        const more = overflow.length > 5 ? `, +${overflow.length - 5} more` : '';
+        const proceed = confirm(`${overflow.length} of ${visible.length} image(s) won't fit in the ${size}×${size} atlas:\n\n${sample}${more}\n\nThey will be skipped. Generate anyway?`);
+        if (!proceed) {
+          addLog('Atlas generation cancelled', 'info');
+          return;
+        }
+      }
+
       document.getElementById('atlasSummaryCard').style.display = 'none';
-      addLog(`Generating ${size}×${size} atlas from ${inputDir}...`, 'info');
+      const orderNote = atlasManualOrder ? ' (manual order)' : '';
+      const exclNote = atlasExcluded.size ? ` (${atlasExcluded.size} excluded)` : '';
+      addLog(`Generating ${size}×${size} atlas from ${inputDir}${orderNote}${exclNote}...`, 'info');
+
+      // Send `order` whenever the user has reordered or excluded anything;
+      // otherwise let the backend use its area-desc default (matches the
+      // Python reference behavior).
+      const body = { inputDir, outputDir, size, margin };
+      if ((atlasManualOrder || atlasExcluded.size > 0) && visible.length) {
+        body.order = visible.map(it => it.name);
+      }
 
       try {
         const res = await fetch('/api/atlas/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputDir, outputDir, size, margin }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (!res.ok || data.error) {
@@ -2828,11 +3247,21 @@
       }
     }
 
-    // Wire up button-enable state when atlas folders change.
+    // Wire up button-enable state + auto-rescan when atlas folders change.
     // setFolderPath rewrites .folder-drop's innerHTML, so we observe the
     // hidden inputs' value via a MutationObserver on the drop containers.
     function watchAtlasFolders() {
-      const obs = new MutationObserver(updateAtlasButton);
+      let lastInputDir = '';
+      const onChange = () => {
+        updateAtlasButton();
+        const dir = document.getElementById('atlasInputDir')?.value || '';
+        if (dir !== lastInputDir) {
+          lastInputDir = dir;
+          if (dir) rescanAtlasInputs();
+          else { atlasInputs = []; atlasManualOrder = false; renderAtlasInputList(); }
+        }
+      };
+      const obs = new MutationObserver(onChange);
       for (const id of ['atlasInputDirDrop', 'atlasOutputDirDrop']) {
         const el = document.getElementById(id);
         if (el) obs.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });

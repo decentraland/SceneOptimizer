@@ -6,39 +6,23 @@ import sharp from 'sharp';
 const defaultProgress = (e) => console.log(e.message || JSON.stringify(e));
 
 /**
- * Pack PNGs from `inputDir` into a fixed-size atlas, written to `outputDir`.
- * If the input set contains `<base>_alpha.png` siblings of `<base>.png`,
- * a paired alpha atlas with matching coordinates is produced.
+ * Partition a folder of PNGs into the set of files that will go into the
+ * main atlas vs. paired `<base>.png` + `<base>_alpha.png` siblings.
+ * Orphan `*_alpha.png` files (no matching base) are treated as normal
+ * main images. Shared by `scanInputs` (used by the UI) and `atlasCommand`
+ * so both see the exact same partition.
  *
- * Port of build_atlas.py — same output JSON shape, same packing strategy
- * (sort by area desc, row-pack within target width).
- *
- * Options:
- *   - size:   atlas width & height in px (default 1024)
- *   - margin: per-cell padding in px (default 1)
+ * Returns absolute paths so the caller can read pixels directly.
  */
-export async function atlasCommand(inputDir, outputDir, options, onProgress = defaultProgress) {
-  const inDir = path.resolve(inputDir);
-  const outDir = path.resolve(outputDir);
-  const size = parseInt(options.size, 10) || 1024;
-  const margin = Math.max(0, parseInt(options.margin, 10) || 0);
-
-  const log = (message, type = 'info') => onProgress({ type, message });
-
-  // 1. Scan PNGs (deterministic order: filename asc).
+async function partitionPngs(inDir) {
   const pngs = (await glob('*.png', { cwd: inDir, absolute: true, nocase: true }))
     .filter((f) => !path.basename(f).match(/^atlas(_alpha|_auto_alpha)?_\d+\.png$/i))
     .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
 
-  if (pngs.length === 0) {
-    throw new Error(`No PNG files found in ${inDir}`);
-  }
-
-  // 2. Partition into base / alpha-with-base / orphan-alpha (matches Python rules).
   const allNames = new Set(pngs.map((p) => path.basename(p)));
   const alphaPairs = []; // { base: <abs>, alpha: <abs> }
-  const orphanAlphaFiles = []; // <abs>
-  const baseFiles = []; // <abs> (excludes alpha-with-base)
+  const orphanAlphaFiles = [];
+  const baseFiles = [];
 
   for (const f of pngs) {
     const name = path.basename(f);
@@ -47,7 +31,6 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
       if (allNames.has(baseName)) {
         alphaPairs.push({ base: path.join(path.dirname(f), baseName), alpha: f });
       } else {
-        log(`Alpha file ${name} has no base version, treating as normal image`, 'info');
         orphanAlphaFiles.push(f);
       }
     } else {
@@ -55,42 +38,120 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     }
   }
 
-  const mainFiles = [...baseFiles, ...orphanAlphaFiles]
-    .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+  const mainFiles = [...baseFiles, ...orphanAlphaFiles].sort((a, b) =>
+    path.basename(a).localeCompare(path.basename(b)),
+  );
 
-  log(`Found ${mainFiles.length} image(s) for main atlas, ${alphaPairs.length} alpha pair(s)`, 'info');
+  return { mainFiles, alphaPairs };
+}
 
-  // 3. Get dimensions via sharp.
-  const items = [];
+/**
+ * Public scan used by `GET /api/atlas/scan`. Returns dimensions for each
+ * main file so the UI can show area and offer manual reordering.
+ */
+export async function scanInputs(inputDir) {
+  const inDir = path.resolve(inputDir);
+  const { mainFiles, alphaPairs } = await partitionPngs(inDir);
+
+  const detailed = [];
   for (const f of mainFiles) {
-    const m = await sharp(f).metadata();
-    if (!m.width || !m.height) {
-      log(`Skipping ${path.basename(f)}: could not read dimensions`, 'warning');
-      continue;
+    try {
+      const m = await sharp(f).metadata();
+      if (m.width && m.height) {
+        detailed.push({ path: f, name: path.basename(f), width: m.width, height: m.height });
+      }
+    } catch {
+      // unreadable, skip
     }
-    items.push({
-      file: f,
-      name: path.basename(f),
-      w: m.width,
-      h: m.height,
-      cellW: m.width + 2 * margin,
-      cellH: m.height + 2 * margin,
+  }
+
+  const pairedBaseNames = new Set(alphaPairs.map((p) => path.basename(p.base)));
+  return {
+    inputDir: inDir,
+    mainFiles: detailed.map((d) => ({ ...d, hasAlphaPair: pairedBaseNames.has(d.name) })),
+    alphaPairs: alphaPairs.map((p) => ({
+      base: path.basename(p.base),
+      alpha: path.basename(p.alpha),
+    })),
+  };
+}
+
+/**
+ * Pack PNGs from `inputDir` into a fixed-size atlas, written to `outputDir`.
+ *
+ * Options:
+ *   - size:   atlas width & height in px (default 1024)
+ *   - margin: per-cell padding in px (default 1)
+ *   - order:  optional array of filenames (basenames) defining the exact
+ *             packing order. When provided, items are packed in that order
+ *             with no sort. Files in the folder but not in `order` are
+ *             excluded from the atlas. Files in `order` but not on disk
+ *             are ignored with a warning.
+ */
+export async function atlasCommand(inputDir, outputDir, options, onProgress = defaultProgress) {
+  const inDir = path.resolve(inputDir);
+  const outDir = path.resolve(outputDir);
+  const size = parseInt(options.size, 10) || 1024;
+  const margin = Math.max(0, parseInt(options.margin, 10) || 0);
+  const customOrder = Array.isArray(options.order) && options.order.length ? options.order : null;
+
+  const log = (message, type = 'info') => onProgress({ type, message });
+
+  const { mainFiles, alphaPairs } = await partitionPngs(inDir);
+  if (mainFiles.length === 0) throw new Error(`No PNG files found in ${inDir}`);
+
+  log(`Found ${mainFiles.length} image(s), ${alphaPairs.length} alpha pair(s)`, 'info');
+
+  // Read dimensions for every main file.
+  const fileByName = new Map();
+  for (const f of mainFiles) {
+    const name = path.basename(f);
+    try {
+      const m = await sharp(f).metadata();
+      if (m.width && m.height) {
+        fileByName.set(name, {
+          file: f,
+          name,
+          w: m.width,
+          h: m.height,
+          cellW: m.width + 2 * margin,
+          cellH: m.height + 2 * margin,
+        });
+      } else {
+        log(`Skipping ${name}: could not read dimensions`, 'warning');
+      }
+    } catch {
+      log(`Skipping ${name}: could not read metadata`, 'warning');
+    }
+  }
+
+  if (fileByName.size === 0) throw new Error('No usable images after reading dimensions');
+
+  // Choose packing order: custom (manual reorder) or auto (area desc, name asc).
+  let ordered;
+  if (customOrder) {
+    ordered = [];
+    for (const name of customOrder) {
+      const it = fileByName.get(name);
+      if (it) ordered.push(it);
+      else log(`Custom order references missing file ${name}, ignored`, 'warning');
+    }
+    if (ordered.length === 0) {
+      throw new Error('Custom order did not match any input files');
+    }
+    log(`Packing ${ordered.length} image(s) in manual order`, 'info');
+  } else {
+    ordered = [...fileByName.values()].sort((a, b) => {
+      const areaDelta = b.cellW * b.cellH - a.cellW * a.cellH;
+      return areaDelta !== 0 ? areaDelta : a.name.localeCompare(b.name);
     });
   }
 
-  if (items.length === 0) throw new Error('No usable images after reading dimensions');
-
-  // 4. Pack rows: sort by area desc (tiebreak by filename asc for determinism).
-  const sorted = [...items].sort((a, b) => {
-    const areaDelta = b.cellW * b.cellH - a.cellW * a.cellH;
-    if (areaDelta !== 0) return areaDelta;
-    return a.name.localeCompare(b.name);
-  });
-
+  // Row-pack: greedily fill rows of width <= size.
   const rows = [];
   const skipped = [];
   let currentRow = null;
-  for (const it of sorted) {
+  for (const it of ordered) {
     if (it.cellW > size || it.cellH > size) {
       skipped.push({ name: it.name, reason: 'too large for atlas' });
       log(`Skipping ${it.name}: ${it.cellW}x${it.cellH} exceeds atlas ${size}x${size}`, 'warning');
@@ -106,7 +167,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     }
   }
 
-  // 5. Drop rows that overflow vertically.
+  // Drop rows that overflow vertically.
   const fittedRows = [];
   let totalH = 0;
   for (const row of rows) {
@@ -121,14 +182,14 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     totalH += row.height;
   }
 
-  // 6. Build composite() list + metadata.
+  // Build composite list + metadata.
   const composites = [];
   const meta = {
     atlas: {
       width: size,
       height: size,
       margin,
-      layout_type: 'compact_dynamic',
+      layout_type: customOrder ? 'manual' : 'compact_dynamic',
       rows: fittedRows.length,
       total_images: 0,
       space_efficiency: 0,
@@ -156,7 +217,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
       onProgress({
         type: 'progress',
         current: meta.images.length,
-        total: items.length,
+        total: ordered.length,
         file: it.name,
         message: `Placed ${it.name} at (${imageX}, ${imageY})`,
       });
@@ -167,7 +228,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
   meta.atlas.total_images = meta.images.length;
   meta.atlas.space_efficiency = (imageSpace / (size * size)) * 100;
 
-  // 7. Write main atlas + metadata.
+  // Write main atlas + metadata.
   await fs.mkdir(outDir, { recursive: true });
   const atlasPath = path.join(outDir, `atlas_${size}.png`);
   await sharp({
@@ -183,11 +244,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
   log(`Wrote ${path.basename(atlasPath)}`, 'success');
   log(`Wrote ${path.basename(metadataPath)}`, 'success');
 
-  // 8. Auto-generated alpha atlas — always emitted.
-  // Extracts the alpha channel of the composited atlas as a grayscale PNG
-  // (white = opaque, black = transparent). Ports `extract_alpha.py` but
-  // applied at atlas scale so it works regardless of whether any inputs
-  // had paired *_alpha.png siblings.
+  // Auto-generated alpha atlas — always emitted.
   const autoAlphaPath = path.join(outDir, `atlas_auto_alpha_${size}.png`);
   await sharp(atlasPath)
     .extractChannel('alpha')
@@ -195,7 +252,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     .toFile(autoAlphaPath);
   log(`Wrote ${path.basename(autoAlphaPath)}`, 'success');
 
-  // 9. Paired alpha atlas — only entries whose base actually landed in the main atlas.
+  // Paired alpha atlas — only for placed bases.
   let alphaAtlasPath = null;
   let alphaMetadataPath = null;
   const placedBases = new Set(meta.images.map((i) => i.name));
@@ -263,6 +320,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     skipped,
     atlasSize: size,
     efficiency: meta.atlas.space_efficiency,
+    layoutType: meta.atlas.layout_type,
     atlasPath,
     metadataPath,
     autoAlphaPath,
