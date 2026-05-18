@@ -1751,15 +1751,91 @@
       </div><!-- /panel-optimizer -->
 
       <div class="tab-panel" id="panel-atlas">
+
+        <!-- ATLAS FOLDERS -->
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">UI Atlas Generator</div>
-              <div class="card-subtitle">Merge multiple UI image assets into a single atlas texture</div>
+              <div class="card-title">Folders</div>
+              <div class="card-subtitle">Choose where to read PNGs from and where to write the atlas</div>
             </div>
           </div>
-          <div style="padding:24px;color:var(--text-secondary);">Coming soon.</div>
+          <div class="folders-grid">
+            <div class="field">
+              <label class="field-label">Input PNG Folder</label>
+              <div class="folder-drop" id="atlasInputDirDrop" data-target="atlasInputDir">
+                <input type="hidden" id="atlasInputDir">
+                <div class="folder-drop-icon">🖼️</div>
+                <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+              </div>
+            </div>
+            <div class="field">
+              <label class="field-label">Output Folder</label>
+              <div class="folder-drop" id="atlasOutputDirDrop" data-target="atlasOutputDir">
+                <input type="hidden" id="atlasOutputDir">
+                <div class="folder-drop-icon">📁</div>
+                <div class="folder-drop-hint">Drop a folder here or click to browse</div>
+                <div class="folder-drop-sub">Atlas PNG and JSON metadata will be written here</div>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- ATLAS SETTINGS -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Atlas Settings</div>
+              <div class="card-subtitle">Pack <code>*.png</code> into a square atlas. Files ending in <code>_alpha.png</code> with a matching base produce a paired alpha atlas.</div>
+            </div>
+            <button class="btn btn-primary" id="atlasGenerateBtn" onclick="generateAtlas()" disabled>Generate Atlas</button>
+          </div>
+          <div class="settings-panel">
+            <div>
+              <label class="field-label" for="atlasSize">Atlas Size</label>
+              <select id="atlasSize">
+                <option value="256">256 px</option>
+                <option value="512">512 px</option>
+                <option value="1024" selected>1024 px</option>
+                <option value="2048">2048 px</option>
+                <option value="4096">4096 px</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="atlasMargin">Margin (px)</label>
+              <input type="number" id="atlasMargin" min="0" max="32" value="1">
+            </div>
+          </div>
+          <div class="progress-bar-wrap" id="atlasProgress"><div class="progress-bar"></div></div>
+        </div>
+
+        <!-- ATLAS RESULTS -->
+        <div class="card" id="atlasSummaryCard" style="display:none;">
+          <div class="card-header">
+            <div class="card-title">Atlas Results</div>
+          </div>
+          <div class="results-grid">
+            <div class="result-stat">
+              <div class="value" id="atlasSumCount">—</div>
+              <div class="label">Images</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value" id="atlasSumSize">—</div>
+              <div class="label">Atlas</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value" id="atlasSumEfficiency">—</div>
+              <div class="label">Efficiency</div>
+            </div>
+          </div>
+          <div id="atlasSumPaths" style="padding:0 4px 12px;color:var(--text-secondary);font-size:12px;word-break:break-all;"></div>
+          <div id="atlasPreviewWrap" style="display:none;text-align:center;">
+            <img id="atlasPreview" alt="Atlas preview" style="max-width:100%;max-height:512px;border:1px solid var(--surface-border);border-radius:var(--radius-sm);background:repeating-conic-gradient(#1a1a1a 0 25%, #222 0 50%) 50% / 16px 16px;">
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1825,6 +1901,18 @@
         }
       });
 
+      es.addEventListener('atlas-progress', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.type === 'summary') {
+          showAtlasSummary(d);
+          addLog(d.message, 'success');
+        } else if (d.type === 'warning') {
+          addLog(d.message, 'warning');
+        } else if (d.message) {
+          addLog(d.message, d.type === 'error' ? 'error' : 'info');
+        }
+      });
+
       es.addEventListener('status', (e) => {
         const d = JSON.parse(e.data);
         processing = d.isProcessing;
@@ -1864,8 +1952,13 @@
     }
 
     function toggleProgress(active) {
-      document.getElementById('extractProgress').className = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
-      document.getElementById('compressProgress').className = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
+      const cls = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
+      const ex = document.getElementById('extractProgress');
+      const cm = document.getElementById('compressProgress');
+      const at = document.getElementById('atlasProgress');
+      if (ex) ex.className = cls;
+      if (cm) cm.className = cls;
+      if (at) at.className = cls;
     }
 
     // === Render ===
@@ -1911,6 +2004,7 @@
       document.getElementById('extractAllBtn').disabled = !hasFiles || processing;
       document.getElementById('compressBtn').disabled = !hasExtracted || processing;
       if (typeof updateDedupButtons === 'function') updateDedupButtons();
+      if (typeof updateAtlasButton === 'function') updateAtlasButton();
     }
 
     function addLog(msg, cls = 'info') {
@@ -2593,6 +2687,77 @@
     // === Format UI toggle ===
     document.getElementById('format').addEventListener('change', syncFormatUI);
     syncFormatUI();
+
+    // === Atlas ===
+    function updateAtlasButton() {
+      const btn = document.getElementById('atlasGenerateBtn');
+      if (!btn) return;
+      const hasIn = !!document.getElementById('atlasInputDir')?.value;
+      const hasOut = !!document.getElementById('atlasOutputDir')?.value;
+      btn.disabled = !hasIn || !hasOut || processing;
+    }
+
+    function showAtlasSummary(d) {
+      document.getElementById('atlasSumCount').textContent = d.totalImages;
+      document.getElementById('atlasSumSize').textContent = `${d.atlasSize}×${d.atlasSize}`;
+      document.getElementById('atlasSumEfficiency').textContent = `${d.efficiency.toFixed(1)}%`;
+      const paths = [
+        `Atlas: ${d.atlasPath}`,
+        `Metadata: ${d.metadataPath}`,
+        d.alphaAtlasPath ? `Alpha atlas: ${d.alphaAtlasPath}` : null,
+        d.alphaMetadataPath ? `Alpha metadata: ${d.alphaMetadataPath}` : null,
+        (d.skipped && d.skipped.length) ? `Skipped: ${d.skipped.map(s => `${s.name} (${s.reason})`).join(', ')}` : null,
+      ].filter(Boolean).join('<br>');
+      document.getElementById('atlasSumPaths').innerHTML = paths;
+      const previewWrap = document.getElementById('atlasPreviewWrap');
+      const previewImg = document.getElementById('atlasPreview');
+      previewImg.src = `/api/atlas/preview?path=${encodeURIComponent(d.atlasPath)}&t=${Date.now()}`;
+      previewWrap.style.display = '';
+      const card = document.getElementById('atlasSummaryCard');
+      card.style.display = '';
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    async function generateAtlas() {
+      const inputDir = document.getElementById('atlasInputDir')?.value;
+      const outputDir = document.getElementById('atlasOutputDir')?.value;
+      if (!inputDir || !outputDir) {
+        addLog('Please choose both input and output folders for the atlas', 'warning');
+        return;
+      }
+      const size = parseInt(document.getElementById('atlasSize').value, 10) || 1024;
+      const margin = Math.max(0, parseInt(document.getElementById('atlasMargin').value, 10) || 0);
+
+      document.getElementById('atlasSummaryCard').style.display = 'none';
+      addLog(`Generating ${size}×${size} atlas from ${inputDir}...`, 'info');
+
+      try {
+        const res = await fetch('/api/atlas/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputDir, outputDir, size, margin }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          addLog('Atlas generation failed: ' + (data.error || res.statusText), 'error');
+        }
+      } catch (e) {
+        addLog('Atlas generation failed: ' + e.message, 'error');
+      }
+    }
+
+    // Wire up button-enable state when atlas folders change.
+    // setFolderPath rewrites .folder-drop's innerHTML, so we observe the
+    // hidden inputs' value via a MutationObserver on the drop containers.
+    function watchAtlasFolders() {
+      const obs = new MutationObserver(updateAtlasButton);
+      for (const id of ['atlasInputDirDrop', 'atlasOutputDirDrop']) {
+        const el = document.getElementById(id);
+        if (el) obs.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });
+      }
+    }
+    watchAtlasFolders();
+    updateAtlasButton();
 
     // === Tabs ===
     document.querySelectorAll('.tab-btn').forEach(btn => {
