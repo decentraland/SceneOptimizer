@@ -70,7 +70,7 @@ export async function compressCommand(texturesFolder, options, onProgress = defa
     type: 'start',
     fileCount: imageFiles.length,
     settings: { quality, depth, format, sizes: sizeMap },
-    message: `Found ${imageFiles.length} texture(s) | ${format === 'png' ? 'oxipng lossless' : `quality=${quality}`}, depth=${depth}, format=${format}${denoise !== 'off' ? ', denoise=' + denoise : ''}, concurrency=${CONCURRENCY}`,
+    message: `Found ${imageFiles.length} texture(s) | ${format === 'png' ? `oxipng lossless, depth=${depth}` : `quality=${quality}`}, format=${format}${denoise !== 'off' ? ', denoise=' + denoise : ''}, concurrency=${CONCURRENCY}`,
   });
 
   let totalBefore = 0;
@@ -89,7 +89,11 @@ export async function compressCommand(texturesFolder, options, onProgress = defa
     const needsDenoise = !!dn;
     const isPng = format === 'png';
     const inputIsPng = ['.png'].includes(path.extname(file).toLowerCase());
-    const needsTransform = needsResize || needsDenoise;
+    // Sharp metadata.depth is a string: 'uchar' (8-bit), 'ushort' (16-bit), etc.
+    // Treat anything other than 8-bit unsigned char as 16-bit for our purposes.
+    const inputBitdepth = metadata.depth === 'uchar' ? 8 : 16;
+    const needsBitDepthChange = isPng && inputIsPng && inputBitdepth !== depth;
+    const needsTransform = needsResize || needsDenoise || needsBitDepthChange;
 
     const outputExt = format === 'jpeg' ? '.jpg' : `.${format}`;
     const baseName = path.basename(file, path.extname(file));
@@ -101,23 +105,57 @@ export async function compressCommand(texturesFolder, options, onProgress = defa
       let pngBuffer;
 
       if (needsTransform) {
-        // Sharp handles resize/denoise → outputs raw PNG buffer → oxipng optimizes
+        // Sharp handles resize/denoise/bit-depth change → outputs PNG buffer → oxipng optimizes.
+        // Always pass an explicit bitdepth so the user's selection is honored
+        // (without this, Sharp falls back to the input's bit depth).
         let pipeline = sharp(inputPath);
         if (needsResize) pipeline = pipeline.resize(null, maxHeight, { withoutEnlargement: true });
         if (needsDenoise) {
           pipeline = pipeline.median(dn.median);
           if (dn.sharpen) pipeline = pipeline.sharpen(dn.sharpen);
         }
-        pipeline = pipeline.png({ ...(depth === 8 ? { bitdepth: 8 } : {}) });
+        pipeline = pipeline.png({ bitdepth: depth });
         pngBuffer = await pipeline.toBuffer();
       } else {
         pngBuffer = await fs.readFile(inputPath);
       }
 
-      // oxipng lossless optimization — always
+      // oxipng lossless optimization — always.
+      //
+      // CAUTION: oxipng performs lossless "color type reduction" — e.g. an
+      // RGBA PNG whose RGB channels are all equal gets repacked as 2-channel
+      // grayscale+alpha. The pixel content is mathematically identical but
+      // some runtimes (Babylon.js / glTFast under DCL) fail to load grayscale
+      // PNGs as a glTF baseColor/normal/ORM texture, causing the entire GLB
+      // to render invisibly. We detect channel reduction and re-expand to
+      // RGB/RGBA via Sharp so the runtime always gets a 3- or 4-channel PNG.
       try {
         const optimized = await oxipng(pngBuffer, { level: 2 });
-        if (optimized.length < pngBuffer.length) pngBuffer = optimized;
+        if (optimized.length < pngBuffer.length) {
+          const optimizedMeta = await sharp(optimized).metadata();
+          if (optimizedMeta.channels && optimizedMeta.channels < 3) {
+            // oxipng reduced to grayscale or grayscale+alpha — re-expand.
+            const hasAlpha = optimizedMeta.channels === 2;
+            let pipe = sharp(optimized).toColorspace('srgb');
+            pipe = hasAlpha ? pipe.ensureAlpha() : pipe.removeAlpha();
+            pipe = pipe.png({ bitdepth: depth });
+            const reExpanded = await pipe.toBuffer();
+            // Re-run oxipng on the expanded buffer so we still get a small file.
+            try {
+              const reOptimized = await oxipng(reExpanded, { level: 2 });
+              const reOptMeta = await sharp(reOptimized).metadata();
+              if (reOptimized.length < reExpanded.length && reOptMeta.channels >= 3) {
+                pngBuffer = reOptimized;
+              } else {
+                pngBuffer = reExpanded;
+              }
+            } catch {
+              pngBuffer = reExpanded;
+            }
+          } else {
+            pngBuffer = optimized;
+          }
+        }
       } catch {}
 
       if (inPlace && outputPath === inputPath) {

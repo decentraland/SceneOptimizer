@@ -1769,7 +1769,7 @@
 
         <div class="divider" style="margin: 20px 0;"></div>
 
-        <!-- Quality + Bit Depth -->
+        <!-- Quality + Denoise -->
         <div class="settings-panel">
           <div class="setting-item" id="qualitySetting">
             <label class="setting-label">Quality</label>
@@ -1779,15 +1779,11 @@
             </div>
           </div>
 
-          <div class="setting-item">
-            <label class="setting-label">Bit Depth</label>
-            <div class="select-wrap">
-              <select id="depth">
-                <option value="8" selected>8-bit</option>
-                <option value="16">16-bit</option>
-              </select>
-            </div>
-          </div>
+          <!-- Bit Depth selector hidden: Sharp's PNG encoder doesn't actually
+               emit 16-bit per channel for RGB/RGBA images (silently downcasts
+               to 8-bit). We keep a hidden field so the existing server payload
+               doesn't break. -->
+          <input type="hidden" id="depth" value="8">
 
           <div class="setting-item">
             <label class="setting-label">Denoise</label>
