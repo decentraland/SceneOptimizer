@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { extractCommand } from './extract.js';
 import { compressCommand } from './compress.js';
 import { dedupScan, dedupApply } from './dedup.js';
+import { meshoptCommand } from './meshopt.js';
 
 const program = new Command();
 
@@ -68,6 +69,28 @@ program
       }
       const groupIds = result.groups.map(g => g.id);
       await dedupApply(folder, groupIds, result, { separateFolders: options.separateFolders });
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('meshopt')
+  .description('Run gltfpack mesh optimization on GLBs (DCL-safe defaults)')
+  .argument('<folder>', 'Folder containing GLBs (output from extract/compress/dedup)')
+  .option('-o, --outdir <dir>', 'Output directory (default: <folder>/meshopt)')
+  .option('-s, --separate-folders', 'Models and textures are in separate subfolders', false)
+  .option('-x, --extra-flags <flags>', 'Extra gltfpack flags appended to defaults', '')
+  .option('--no-report', 'Skip writing the TSV report')
+  .action(async (folder, options) => {
+    try {
+      await meshoptCommand(folder, {
+        outdir: options.outdir,
+        separateFolders: options.separateFolders,
+        extraFlags: options.extraFlags,
+        report: options.report,
+      });
     } catch (e) {
       console.error(e.message);
       process.exit(1);

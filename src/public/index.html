@@ -1853,6 +1853,40 @@
         </div>
       </div>
 
+      <!-- MESH OPTIMIZATION -->
+      <div class="card" id="meshoptCard" style="display: none;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Mesh Optimization</div>
+            <div class="card-subtitle">Quantize geometry with gltfpack (DCL-safe defaults)</div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="meshoptBtn" onclick="runMeshopt()">
+            Run Meshopt
+          </button>
+        </div>
+
+        <div class="settings-panel">
+          <div class="setting-item">
+            <label class="setting-label">
+              Output subfolder
+              <span class="setting-hint">Relative to the output directory; originals are not touched</span>
+            </label>
+            <input type="text" id="meshoptOutdir" value="meshopt" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-family: inherit;">
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">
+              Extra gltfpack flags
+              <span class="setting-hint">Appended to the DCL-safe defaults (-tr -kn -vpf -kv -vtf)</span>
+            </label>
+            <input type="text" id="meshoptExtraFlags" placeholder="e.g. -cc for EXT_meshopt_compression" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-family: inherit;">
+          </div>
+        </div>
+
+        <div class="progress-bar-wrap" id="meshoptProgress">
+          <div class="progress-bar indeterminate"></div>
+        </div>
+      </div>
+
       <!-- LOG -->
       <div class="card" style="padding: 0; overflow: hidden;">
         <div class="log-container">
@@ -2128,6 +2162,17 @@
         }
       });
 
+      es.addEventListener('meshopt-progress', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.message) {
+          const cls = d.type === 'file-error' ? 'error'
+            : d.type === 'summary' ? 'success'
+            : d.type === 'warning' ? 'warning'
+            : 'info';
+          addLog(d.message, cls);
+        }
+      });
+
       es.addEventListener('atlas-progress', (e) => {
         const d = JSON.parse(e.data);
         if (d.type === 'summary') {
@@ -2192,7 +2237,7 @@
 
     function toggleProgress(active) {
       const cls = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
-      for (const id of ['extractProgress', 'compressProgress', 'atlasProgress', 'alphaProgress']) {
+      for (const id of ['extractProgress', 'compressProgress', 'meshoptProgress', 'atlasProgress', 'alphaProgress']) {
         const el = document.getElementById(id);
         if (el) el.className = cls;
       }
@@ -2238,11 +2283,20 @@
     function updateButtons() {
       const hasFiles = files.length > 0;
       const hasExtracted = files.some(f => f.status === 'extracted');
+      // Meshopt can run on any folder with GLBs in it — it does NOT require the
+      // current session to have done an extract. Show the card whenever an
+      // output folder is configured (or once extraction has happened).
+      const hasOutputDir = !!document.getElementById('outputDir')?.value;
+      const meshoptReady = hasExtracted || hasOutputDir;
       document.getElementById('extractAllBtn').disabled = !hasFiles || processing;
       document.getElementById('compressBtn').disabled = !hasExtracted || processing;
       if (typeof updateDedupButtons === 'function') updateDedupButtons();
       if (typeof updateAtlasButton === 'function') updateAtlasButton();
       if (typeof updateAlphaButton === 'function') updateAlphaButton();
+      const meshoptCard = document.getElementById('meshoptCard');
+      if (meshoptCard) meshoptCard.style.display = meshoptReady ? '' : 'none';
+      const meshoptBtn = document.getElementById('meshoptBtn');
+      if (meshoptBtn) meshoptBtn.disabled = !meshoptReady || processing;
     }
 
     function addLog(msg, cls = 'info') {
@@ -2301,6 +2355,30 @@
         body: JSON.stringify(body),
       });
       addLog('Settings saved', 'success');
+      // Reveal meshopt card now that the output folder is known.
+      updateButtons();
+    }
+
+    async function runMeshopt() {
+      addLog('Starting mesh optimization...', 'info');
+      toggleProgress(true);
+      const body = {
+        subdir: document.getElementById('meshoptOutdir').value.trim() || 'meshopt',
+        extraFlags: document.getElementById('meshoptExtraFlags').value.trim(),
+      };
+      try {
+        const res = await fetch('/api/meshopt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.error) addLog('Error: ' + data.error, 'error');
+        else addLog('Mesh optimization complete!', 'success');
+      } catch (e) {
+        addLog('Mesh optimization failed: ' + e.message, 'error');
+      }
+      toggleProgress(false);
     }
 
     async function extractAll() {

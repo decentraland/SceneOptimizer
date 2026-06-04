@@ -10,6 +10,7 @@ import { compressCommand } from './compress.js';
 import { dedupScan, dedupApply } from './dedup.js';
 import { atlasCommand, scanInputs as atlasScan } from './atlas.js';
 import { alphaExtractCommand } from './alphaExtract.js';
+import { meshoptCommand } from './meshopt.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -356,6 +357,40 @@ app.get('/api/atlas/preview', async (req, res) => {
     res.sendFile(filePath);
   } catch (err) {
     res.status(404).json({ error: 'Not found' });
+  }
+});
+
+// === Meshopt endpoint ===
+
+app.post('/api/meshopt', async (req, res) => {
+  if (isProcessing) return res.status(409).json({ error: 'Processing in progress' });
+
+  const folder = settings.outputDir;
+  if (!folder) return res.status(400).json({ error: 'No output folder configured' });
+
+  isProcessing = true;
+  broadcast('status', { isProcessing: true });
+
+  try {
+    let outdir = req.body.outdir || undefined;
+    if (!outdir && req.body.subdir) {
+      outdir = path.join(folder, req.body.subdir);
+    }
+    const result = await meshoptCommand(folder, {
+      outdir,
+      separateFolders: settings.separateFolders,
+      extraFlags: req.body.extraFlags || '',
+      report: req.body.report !== false,
+    }, (e) => {
+      broadcast('meshopt-progress', e);
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Meshopt error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    isProcessing = false;
+    broadcast('status', { isProcessing: false });
   }
 });
 
