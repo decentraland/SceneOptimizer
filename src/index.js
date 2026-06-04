@@ -4,6 +4,7 @@ import { extractCommand } from './extract.js';
 import { compressCommand } from './compress.js';
 import { dedupScan, dedupApply } from './dedup.js';
 import { meshoptCommand } from './meshopt.js';
+import { canonicalizeCommand } from './canonicalize.js';
 
 const program = new Command();
 
@@ -90,6 +91,24 @@ program
         separateFolders: options.separateFolders,
         extraFlags: options.extraFlags,
         report: options.report,
+      });
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('canonicalize')
+  .description('Canonicalize materials across GLBs (rename + normalize identical materials, collapse within-GLB duplicates)')
+  .argument('<folder>', 'Folder containing GLBs (output from compress/dedup/meshopt)')
+  .option('-o, --outdir <dir>', 'Output directory (default: <folder>/canonicalized)')
+  .option('-s, --separate-folders', 'Models and textures are in separate subfolders', false)
+  .action(async (folder, options) => {
+    try {
+      await canonicalizeCommand(folder, {
+        outdir: options.outdir,
+        separateFolders: options.separateFolders,
       });
     } catch (e) {
       console.error(e.message);
