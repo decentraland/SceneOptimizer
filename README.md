@@ -1,6 +1,6 @@
 # SceneOptimizer
 
-Extract, deduplicate, and compress textures from GLB files for Decentraland scenes. Built for artists — no terminal required.
+Extract, deduplicate, and compress textures from GLB files for Decentraland scenes.
 
 ## What it does
 
@@ -10,33 +10,20 @@ Extract, deduplicate, and compress textures from GLB files for Decentraland scen
 
 3. **Compress** — Resizes textures with per-type control (baseColor, normal, ORM, emissive). PNG compression uses [oxipng](https://github.com/shssoichern/oxipng) (lossless, WASM) for optimal file sizes without quality loss. JPEG and WebP use Sharp with a configurable quality slider. Optional denoising via median filter + sharpen.
 
-## For artists (ZIP distribution)
-
-Download the ZIP for your platform from the releases:
-
-| Platform | File |
-|----------|------|
-| macOS Apple Silicon | `SceneOptimizer-macos-arm64.zip` |
-| macOS Intel | `SceneOptimizer-macos-x64.zip` |
-| Windows | `SceneOptimizer-win-x64.zip` |
-
-1. Unzip the file
-2. Double-click `start.command` (Mac) or `start.bat` (Windows)
-3. The app opens in your browser at `http://localhost:3000`
-4. Drag and drop your **watch folder** (containing GLB files) and **output folder**
-5. Click **Extract** to pull textures out of GLBs
-6. Click **Scan for Duplicates** to find redundant textures, compare them visually, and delete selected duplicates
-7. Adjust compression settings (max sizes per texture type, format, denoise) and click **Compress**
-
-## For developers
+## Getting started
 
 ### Prerequisites
 
-- Node.js 22+
+- [Node.js](https://nodejs.org/) 22 or later
+- [Git](https://git-scm.com/)
 
-### Setup
+### Installation
+
+Clone the repository and install dependencies:
 
 ```bash
+git clone https://github.com/decentraland/SceneOptimizer.git
+cd SceneOptimizer
 npm install
 ```
 
@@ -46,7 +33,12 @@ npm install
 npm run ui
 ```
 
-Opens at `http://localhost:3000`.
+Opens at `http://localhost:3000`. From the web UI you can:
+
+1. Drag and drop your **watch folder** (containing GLB files) and **output folder**
+2. Click **Extract** to pull textures out of GLBs
+3. Click **Scan for Duplicates** to find redundant textures, compare them visually, and delete selected duplicates
+4. Adjust compression settings (max sizes per texture type, format, denoise) and click **Compress**
 
 ### CLI usage
 
@@ -96,19 +88,21 @@ node src/index.js compress ./output
 | `-f, --format <fmt>` | `png` | Output format: png, jpeg, webp |
 | `--denoise <level>` | `off` | Denoise: off, light, medium, strong |
 
-### Build distribution ZIPs
+### Build distribution ZIPs (optional)
+
+The build script can produce self-contained ZIPs in `dist/` for macOS (arm64 + x64) and Windows (x64), each with an embedded Node.js runtime:
 
 ```bash
 npm run build
 ```
-
-Produces self-contained ZIPs in `dist/` for macOS (arm64 + x64) and Windows (x64), each with an embedded Node.js runtime.
 
 Build a single target:
 
 ```bash
 npm run build -- --target macos-arm64
 ```
+
+> **Note:** Pre-built ZIPs are not currently published as releases. To distribute the tool, you must build them yourself using the commands above.
 
 ## How it works
 
