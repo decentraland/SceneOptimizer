@@ -1,0 +1,105 @@
+# Third-Party Notices
+
+This project uses the following third-party libraries. Their licenses and
+attribution notices are listed below.
+
+---
+
+## sharp — High performance Node.js image processing
+
+Version: 0.34.5
+License: Apache-2.0
+Homepage: https://sharp.pixelplumbing.com
+Copyright © 2013 Lovell Fuller and contributors
+
+---
+
+## libvips — Image processing library
+
+Version: 8.16.x (bundled via @img/sharp-libvips-*)
+License: LGPL-3.0-or-later
+Homepage: https://www.libvips.org
+Copyright © 1991–2023 The libvips Authors
+
+libvips is licensed under the GNU Lesser General Public License v3.0 or later.
+The full text of the LGPL-3.0 license is available at:
+https://www.gnu.org/licenses/lgpl-3.0.html
+
+In compliance with LGPL-3.0, the libvips shared library is distributed as a
+pre-built binary that can be replaced. Source code and build instructions are
+available at: https://github.com/libvips/libvips
+
+---
+
+## @gltf-transform/core, @gltf-transform/extensions, @gltf-transform/functions
+
+Version: 4.3.0
+License: MIT
+Homepage: https://gltf-transform.dev
+Copyright © 2019–2024 Don McCurdy
+
+---
+
+## @wasm-codecs/oxipng — WebAssembly bindings for oxipng
+
+License: MIT
+Homepage: https://github.com/nicksay/wasm-codecs
+oxipng Copyright © 2016–2024 Joshua Holmer (MIT)
+
+---
+
+## qs — Query string parsing and stringifying
+
+Version: 6.15.0
+License: BSD-3-Clause
+Homepage: https://github.com/ljharb/qs
+Copyright © 2014 Nathan LaFreniere and other contributors
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED.
+
+---
+
+## glob, minipass, lru-cache, minimatch, jackspeak, path-scurry,
+## package-json-from-dist, @isaacs/cliui
+
+License: BlueOak-1.0.0 (permissive)
+Homepage: https://blueoakcouncil.org/license/1.0.0
+Copyright © Isaac Z. Schlueter and contributors
+
+---
+
+## detect-libc
+
+Version: 2.1.2
+License: Apache-2.0
+Homepage: https://github.com/nicholasgasior/detect-libc
+Copyright © 2017 Lovell Fuller
+
+---
+
+## Additional MIT-licensed dependencies
+
+The following dependencies are used under the MIT license:
+commander, express, chokidar, open, @emnapi/runtime, tslib, and their
+transitive dependencies. Full license texts are available in each package's
+respective directory within node_modules.
+
+---
+
+For the complete list of dependencies and their licenses, run:
+  npx license-checker --summary
