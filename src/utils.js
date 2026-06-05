@@ -1,4 +1,5 @@
 import { glob } from 'glob';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const SLOT_MAP = {
@@ -65,4 +66,33 @@ export function formatBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / 1024 ** i).toFixed(1)} ${units[i]}`;
+}
+
+// Recursively sum file sizes in a directory. `excludeNames` is a Set of
+// directory or file names to skip at any depth (e.g. 'node_modules', 'meshopt'
+// for the meshopt output subfolder). Symlinks are not followed.
+export async function getFolderSize(dir, excludeNames = new Set()) {
+  let total = 0;
+  async function walk(d) {
+    let entries;
+    try {
+      entries = await fs.readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (excludeNames.has(entry.name)) continue;
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        await walk(p);
+      } else if (entry.isFile()) {
+        try {
+          const s = await fs.stat(p);
+          total += s.size;
+        } catch {}
+      }
+    }
+  }
+  await walk(dir);
+  return total;
 }

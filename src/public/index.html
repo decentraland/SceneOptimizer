@@ -764,6 +764,18 @@
     .result-stat .value.after { color: var(--success); }
     .result-stat .value.reduction { color: var(--dcl); }
 
+    .summary-stage-row { padding: 10px 0; }
+    .summary-stage-row + .summary-stage-row { border-top: 1px solid var(--border); margin-top: 4px; }
+    .summary-stage-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
     /* ============================================
        PROGRESS BAR
        ============================================ */
@@ -1769,7 +1781,7 @@
 
         <div class="divider" style="margin: 20px 0;"></div>
 
-        <!-- Quality + Bit Depth -->
+        <!-- Quality + Denoise -->
         <div class="settings-panel">
           <div class="setting-item" id="qualitySetting">
             <label class="setting-label">Quality</label>
@@ -1779,15 +1791,11 @@
             </div>
           </div>
 
-          <div class="setting-item">
-            <label class="setting-label">Bit Depth</label>
-            <div class="select-wrap">
-              <select id="depth">
-                <option value="8" selected>8-bit</option>
-                <option value="16">16-bit</option>
-              </select>
-            </div>
-          </div>
+          <!-- Bit Depth selector hidden: Sharp's PNG encoder doesn't actually
+               emit 16-bit per channel for RGB/RGBA images (silently downcasts
+               to 8-bit). We keep a hidden field so the existing server payload
+               doesn't break. -->
+          <input type="hidden" id="depth" value="8">
 
           <div class="setting-item">
             <label class="setting-label">Denoise</label>
@@ -1853,6 +1861,40 @@
         </div>
       </div>
 
+      <!-- MESH OPTIMIZATION -->
+      <div class="card" id="meshoptCard" style="display: none;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Mesh Optimization</div>
+            <div class="card-subtitle">Quantize geometry with gltfpack (DCL-safe defaults)</div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="meshoptBtn" onclick="runMeshopt()">
+            Run Meshopt
+          </button>
+        </div>
+
+        <div class="settings-panel">
+          <div class="setting-item">
+            <label class="setting-label">
+              Output subfolder
+              <span class="setting-hint">Relative to the output directory; originals are not touched</span>
+            </label>
+            <input type="text" id="meshoptOutdir" value="meshopt" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-family: inherit;">
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">
+              Extra gltfpack flags
+              <span class="setting-hint">Appended to the DCL-safe defaults (-tr -kn -vpf -kv -vtf)</span>
+            </label>
+            <input type="text" id="meshoptExtraFlags" placeholder="e.g. -cc for EXT_meshopt_compression" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-family: inherit;">
+          </div>
+        </div>
+
+        <div class="progress-bar-wrap" id="meshoptProgress">
+          <div class="progress-bar indeterminate"></div>
+        </div>
+      </div>
+
       <!-- LOG -->
       <div class="card" style="padding: 0; overflow: hidden;">
         <div class="log-container">
@@ -1869,22 +1911,66 @@
       <!-- SUMMARY -->
       <div class="card results-card" id="summaryCard" style="display: none;">
         <div class="card-header">
-          <div class="card-title">Compression Results</div>
+          <div class="card-title">Optimization Results</div>
         </div>
-        <div class="results-grid">
-          <div class="result-stat">
-            <div class="value before" id="sumBefore">—</div>
-            <div class="label">Before</div>
+
+        <div class="summary-stage-row" id="summaryRow-overall" style="display: none;">
+          <div class="summary-stage-label">Folder Total</div>
+          <div class="results-grid">
+            <div class="result-stat">
+              <div class="value before" id="sumOverallBefore">—</div>
+              <div class="label">Original</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value after" id="sumOverallAfter">—</div>
+              <div class="label">Current</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value reduction" id="sumOverallReduction">—</div>
+              <div class="label">Saved</div>
+            </div>
           </div>
-          <div class="result-arrow">→</div>
-          <div class="result-stat">
-            <div class="value after" id="sumAfter">—</div>
-            <div class="label">After</div>
+        </div>
+
+        <div class="summary-stage-row" id="summaryRow-compress" style="display: none;">
+          <div class="summary-stage-label">Texture Compression</div>
+          <div class="results-grid">
+            <div class="result-stat">
+              <div class="value before" id="sumBefore">—</div>
+              <div class="label">Before</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value after" id="sumAfter">—</div>
+              <div class="label">After</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value reduction" id="sumReduction">—</div>
+              <div class="label">Saved</div>
+            </div>
           </div>
-          <div class="result-arrow">→</div>
-          <div class="result-stat">
-            <div class="value reduction" id="sumReduction">—</div>
-            <div class="label">Saved</div>
+        </div>
+
+        <div class="summary-stage-row" id="summaryRow-meshopt" style="display: none;">
+          <div class="summary-stage-label">Mesh Optimization</div>
+          <div class="results-grid">
+            <div class="result-stat">
+              <div class="value before" id="sumMeshoptBefore">—</div>
+              <div class="label">Before</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value after" id="sumMeshoptAfter">—</div>
+              <div class="label">After</div>
+            </div>
+            <div class="result-arrow">→</div>
+            <div class="result-stat">
+              <div class="value reduction" id="sumMeshoptReduction">—</div>
+              <div class="label">Saved</div>
+            </div>
           </div>
         </div>
       </div>
@@ -2152,6 +2238,25 @@
         }
       });
 
+      es.addEventListener('folder-size', (e) => {
+        const d = JSON.parse(e.data);
+        if (typeof d.folderBefore === 'number' && typeof d.folderAfter === 'number') {
+          updateOverallFolderSize(d.folderBefore, d.folderAfter);
+        }
+      });
+
+      es.addEventListener('meshopt-progress', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.type === 'summary') showMeshoptSummary(d);
+        if (d.message) {
+          const cls = d.type === 'file-error' ? 'error'
+            : d.type === 'summary' ? 'success'
+            : d.type === 'warning' ? 'warning'
+            : 'info';
+          addLog(d.message, cls);
+        }
+      });
+
       es.addEventListener('status', (e) => {
         const d = JSON.parse(e.data);
         processing = d.isProcessing;
@@ -2192,7 +2297,7 @@
 
     function toggleProgress(active) {
       const cls = active ? 'progress-bar-wrap active' : 'progress-bar-wrap';
-      for (const id of ['extractProgress', 'compressProgress', 'atlasProgress', 'alphaProgress']) {
+      for (const id of ['extractProgress', 'compressProgress', 'atlasProgress', 'alphaProgress', 'meshoptProgress']) {
         const el = document.getElementById(id);
         if (el) el.className = cls;
       }
@@ -2238,11 +2343,20 @@
     function updateButtons() {
       const hasFiles = files.length > 0;
       const hasExtracted = files.some(f => f.status === 'extracted');
+      // Meshopt can run on any folder with GLBs in it — it does NOT require the
+      // current session to have done an extract. Show the card whenever an
+      // output folder is configured (or once extraction has happened).
+      const hasOutputDir = !!document.getElementById('outputDir')?.value;
+      const meshoptReady = hasExtracted || hasOutputDir;
       document.getElementById('extractAllBtn').disabled = !hasFiles || processing;
       document.getElementById('compressBtn').disabled = !hasExtracted || processing;
       if (typeof updateDedupButtons === 'function') updateDedupButtons();
       if (typeof updateAtlasButton === 'function') updateAtlasButton();
       if (typeof updateAlphaButton === 'function') updateAlphaButton();
+      const meshoptCard = document.getElementById('meshoptCard');
+      if (meshoptCard) meshoptCard.style.display = meshoptReady ? '' : 'none';
+      const meshoptBtn = document.getElementById('meshoptBtn');
+      if (meshoptBtn) meshoptBtn.disabled = !meshoptReady || processing;
     }
 
     function addLog(msg, cls = 'info') {
@@ -2257,14 +2371,49 @@
     function clearLog() {
       document.getElementById('log').innerHTML = '';
       document.getElementById('summaryCard').style.display = 'none';
+      const overallRow = document.getElementById('summaryRow-overall');
+      const compressRow = document.getElementById('summaryRow-compress');
+      const meshoptRow = document.getElementById('summaryRow-meshopt');
+      if (overallRow) overallRow.style.display = 'none';
+      if (compressRow) compressRow.style.display = 'none';
+      if (meshoptRow) meshoptRow.style.display = 'none';
+      originalFolderSize = null;
+      currentFolderSize = null;
     }
 
     function showSummary(d) {
       document.getElementById('sumBefore').textContent = formatBytes(d.totalBefore);
       document.getElementById('sumAfter').textContent = formatBytes(d.totalAfter);
       document.getElementById('sumReduction').textContent = d.reduction + '%';
+      document.getElementById('summaryRow-compress').style.display = '';
       document.getElementById('summaryCard').style.display = '';
       document.getElementById('summaryCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function showMeshoptSummary(d) {
+      document.getElementById('sumMeshoptBefore').textContent = formatBytes(d.totalBefore);
+      document.getElementById('sumMeshoptAfter').textContent = formatBytes(d.totalAfter);
+      document.getElementById('sumMeshoptReduction').textContent = d.reduction + '%';
+      document.getElementById('summaryRow-meshopt').style.display = '';
+      document.getElementById('summaryCard').style.display = '';
+      document.getElementById('summaryCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Overall folder-size tracking. `originalFolderSize` is captured from the
+    // first folder-size event of a session (i.e. before the first stage runs).
+    // `currentFolderSize` updates after every stage so the headline always
+    // reflects the latest output.
+    let originalFolderSize = null;
+    let currentFolderSize = null;
+    function updateOverallFolderSize(folderBefore, folderAfter) {
+      if (originalFolderSize == null) originalFolderSize = folderBefore;
+      currentFolderSize = folderAfter;
+      const saved = originalFolderSize > 0 ? ((1 - currentFolderSize / originalFolderSize) * 100) : 0;
+      document.getElementById('sumOverallBefore').textContent = formatBytes(originalFolderSize);
+      document.getElementById('sumOverallAfter').textContent = formatBytes(currentFolderSize);
+      document.getElementById('sumOverallReduction').textContent = saved.toFixed(1) + '%';
+      document.getElementById('summaryRow-overall').style.display = '';
+      document.getElementById('summaryCard').style.display = '';
     }
 
     // === API ===
@@ -2301,6 +2450,8 @@
         body: JSON.stringify(body),
       });
       addLog('Settings saved', 'success');
+      // Reveal meshopt card now that the output folder is known.
+      updateButtons();
     }
 
     async function extractAll() {
@@ -2317,6 +2468,28 @@
         else addLog('Extraction complete!', 'success');
       } catch (e) {
         addLog('Extraction failed: ' + e.message, 'error');
+      }
+      toggleProgress(false);
+    }
+
+    async function runMeshopt() {
+      addLog('Starting mesh optimization...', 'info');
+      toggleProgress(true);
+      const body = {
+        subdir: document.getElementById('meshoptOutdir').value.trim() || 'meshopt',
+        extraFlags: document.getElementById('meshoptExtraFlags').value.trim(),
+      };
+      try {
+        const res = await fetch('/api/meshopt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.error) addLog('Error: ' + data.error, 'error');
+        else addLog('Mesh optimization complete!', 'success');
+      } catch (e) {
+        addLog('Mesh optimization failed: ' + e.message, 'error');
       }
       toggleProgress(false);
     }
