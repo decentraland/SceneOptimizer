@@ -2,8 +2,55 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { glob } from 'glob';
 import sharp from 'sharp';
+import oxipng from '@wasm-codecs/oxipng';
+import { formatBytes } from './utils.js';
 
 const defaultProgress = (e) => console.log(e.message || JSON.stringify(e));
+
+/**
+ * Two-pass PNG compressor mirroring `compress-assets.sh`:
+ *   Pass 1: oxipng (lossless, recompress deflate, strip metadata)
+ *   Pass 2: sharp palette quantization (libimagequant — same as pngquant),
+ *           kept only if the result is actually smaller (quality guard).
+ *
+ * Returns { before, after } in bytes. Rewrites `filePath` in place when the
+ * combined output is smaller than the input.
+ */
+async function compressOutputPng(filePath, { lossy = true, quality = 90 } = {}) {
+  const original = await fs.readFile(filePath);
+  const beforeSize = original.length;
+
+  // Pass 1: lossless oxipng. level 4 ≈ oxipng -o 4; "safe" strips chunks we
+  // don't need without touching anything that affects rendering.
+  let best = original;
+  try {
+    const losslessBuf = await oxipng(original, { level: 4, strip: 'safe' });
+    if (losslessBuf.length < best.length) best = losslessBuf;
+  } catch {
+    // oxipng failed — keep original
+  }
+
+  // Pass 2: lossy palette quantization. libimagequant skips palette mode for
+  // some inputs (it throws), and even when it succeeds the result is
+  // sometimes larger than the lossless version — guard with a size check
+  // exactly like the bash script's "only keep if smaller".
+  if (lossy) {
+    try {
+      const lossyBuf = await sharp(best)
+        .png({ palette: true, quality, effort: 10, compressionLevel: 9 })
+        .toBuffer();
+      if (lossyBuf.length < best.length) best = lossyBuf;
+    } catch {
+      // palette mode unsupported / quality unreachable — keep lossless
+    }
+  }
+
+  if (best.length < beforeSize) {
+    await fs.writeFile(filePath, best);
+    return { before: beforeSize, after: best.length };
+  }
+  return { before: beforeSize, after: beforeSize };
+}
 
 /**
  * Partition a folder of PNGs into the set of files that will go into the
@@ -94,8 +141,28 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
   const size = parseInt(options.size, 10) || 1024;
   const margin = Math.max(0, parseInt(options.margin, 10) || 0);
   const customOrder = Array.isArray(options.order) && options.order.length ? options.order : null;
+  const compress = !!options.compress;
+  const compressQuality = Math.min(100, Math.max(1, parseInt(options.quality, 10) || 90));
+  const compressLossy = options.lossy !== false; // default true when compress is on
 
   const log = (message, type = 'info') => onProgress({ type, message });
+
+  // Track total bytes saved by the compression pass across all atlas outputs.
+  let compressBefore = 0;
+  let compressAfter = 0;
+  async function maybeCompress(p) {
+    if (!compress) return;
+    try {
+      const { before, after } = await compressOutputPng(p, { lossy: compressLossy, quality: compressQuality });
+      compressBefore += before;
+      compressAfter += after;
+      const saved = before - after;
+      const pct = before > 0 ? (saved * 100 / before).toFixed(1) : '0.0';
+      log(`Compressed ${path.basename(p)}: ${formatBytes(before)} -> ${formatBytes(after)} (${pct}% saved)`, saved > 0 ? 'success' : 'info');
+    } catch (err) {
+      log(`Compression failed on ${path.basename(p)}: ${err.message}`, 'warning');
+    }
+  }
 
   const { mainFiles, alphaPairs } = await partitionPngs(inDir);
   if (mainFiles.length === 0) throw new Error(`No PNG files found in ${inDir}`);
@@ -243,6 +310,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
 
   log(`Wrote ${path.basename(atlasPath)}`, 'success');
   log(`Wrote ${path.basename(metadataPath)}`, 'success');
+  await maybeCompress(atlasPath);
 
   // Auto-generated alpha atlas — always emitted.
   const autoAlphaPath = path.join(outDir, `atlas_auto_alpha_${size}.png`);
@@ -251,6 +319,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     .png({ compressionLevel: 0, force: true })
     .toFile(autoAlphaPath);
   log(`Wrote ${path.basename(autoAlphaPath)}`, 'success');
+  await maybeCompress(autoAlphaPath);
 
   // Paired alpha atlas — only for placed bases.
   let alphaAtlasPath = null;
@@ -308,10 +377,27 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
 
     log(`Wrote ${path.basename(alphaAtlasPath)}`, 'success');
     log(`Wrote ${path.basename(alphaMetadataPath)}`, 'success');
+    await maybeCompress(alphaAtlasPath);
   } else if (alphaPairs.length > 0) {
     log('Alpha pairs found but no usable base placements; alpha atlas skipped', 'warning');
   } else {
     log('No alpha files found, skipping alpha atlas', 'info');
+  }
+
+  // Surface compression totals so the UI can show overall savings.
+  let compressionSummary = null;
+  if (compress) {
+    const saved = compressBefore - compressAfter;
+    const pct = compressBefore > 0 ? (saved * 100 / compressBefore) : 0;
+    compressionSummary = {
+      before: compressBefore,
+      after: compressAfter,
+      saved,
+      percent: pct,
+      lossy: compressLossy,
+      quality: compressQuality,
+    };
+    log(`Compression total: ${formatBytes(compressBefore)} -> ${formatBytes(compressAfter)} (${pct.toFixed(1)}% saved)`, 'success');
   }
 
   const summary = {
@@ -326,6 +412,7 @@ export async function atlasCommand(inputDir, outputDir, options, onProgress = de
     autoAlphaPath,
     alphaAtlasPath,
     alphaMetadataPath,
+    compression: compressionSummary,
     message: `Atlas built: ${meta.images.length} image(s), ${meta.atlas.space_efficiency.toFixed(1)}% efficiency`,
   };
   onProgress(summary);

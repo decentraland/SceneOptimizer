@@ -1964,6 +1964,26 @@
               <input type="number" id="atlasMargin" min="0" max="32" value="1">
             </div>
           </div>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--divider);">
+            <label class="toggle-label" style="margin-bottom:10px;">
+              <input type="checkbox" id="atlasCompress">
+              <span class="toggle-switch"></span>
+              <span class="toggle-text">Compress output PNGs (oxipng lossless + palette quantization)</span>
+            </label>
+            <div id="atlasCompressOpts" class="settings-panel" style="display:none;">
+              <label class="toggle-label" style="margin:0;">
+                <input type="checkbox" id="atlasCompressLossy" checked>
+                <span class="toggle-switch"></span>
+                <span class="toggle-text">Allow lossy pass (only kept when smaller than lossless)</span>
+              </label>
+              <div>
+                <label class="field-label" for="atlasCompressQuality">
+                  Quality <span id="atlasCompressQualityVal" style="color:var(--text);font-weight:600;">90</span>
+                </label>
+                <input type="range" id="atlasCompressQuality" min="80" max="100" value="90" oninput="document.getElementById('atlasCompressQualityVal').textContent = this.value">
+              </div>
+            </div>
+          </div>
           <div class="progress-bar-wrap" id="atlasProgress"><div class="progress-bar"></div></div>
         </div>
 
@@ -2397,7 +2417,19 @@
             await readDir(entry, '');
 
             try {
-              const siblingId = targetId === 'watchFolder' ? 'outputDir' : 'watchFolder';
+              // Map each folder-drop target to its sibling so the backend can
+              // use the sibling's path as a proximity hint when scoring
+              // candidates. Falls back to the GLB watch/output pair so old
+              // behavior is preserved if a new pair isn't registered here.
+              const SIBLING_TARGETS = {
+                watchFolder: 'outputDir',
+                outputDir: 'watchFolder',
+                atlasInputDir: 'atlasOutputDir',
+                atlasOutputDir: 'atlasInputDir',
+                alphaInputDir: 'alphaOutputDir',
+                alphaOutputDir: 'alphaInputDir',
+              };
+              const siblingId = SIBLING_TARGETS[targetId] || (targetId === 'watchFolder' ? 'outputDir' : 'watchFolder');
               const siblingPath = document.getElementById(siblingId)?.value || '';
               const res = await fetch('/api/resolve-drop', {
                 method: 'POST',
@@ -3167,6 +3199,11 @@
     document.getElementById('atlasSize')?.addEventListener('change', renderAtlasInputList);
     document.getElementById('atlasMargin')?.addEventListener('input', renderAtlasInputList);
 
+    // Toggle the lossy/quality sub-options visibility with the master checkbox.
+    document.getElementById('atlasCompress')?.addEventListener('change', (e) => {
+      document.getElementById('atlasCompressOpts').style.display = e.target.checked ? '' : 'none';
+    });
+
     function showAtlasSummary(d) {
       document.getElementById('atlasSumCount').textContent = d.totalImages;
       document.getElementById('atlasSumSize').textContent = `${d.atlasSize}×${d.atlasSize}`;
@@ -3177,6 +3214,7 @@
         d.autoAlphaPath ? `Auto alpha: ${d.autoAlphaPath}` : null,
         d.alphaAtlasPath ? `Paired alpha atlas: ${d.alphaAtlasPath}` : null,
         d.alphaMetadataPath ? `Paired alpha metadata: ${d.alphaMetadataPath}` : null,
+        d.compression ? `Compression: ${formatBytes(d.compression.before)} → ${formatBytes(d.compression.after)} (${d.compression.percent.toFixed(1)}% saved${d.compression.lossy ? `, lossy q${d.compression.quality}` : ', lossless only'})` : null,
         (d.skipped && d.skipped.length) ? `Skipped: ${d.skipped.map(s => `${s.name} (${s.reason})`).join(', ')}` : null,
       ].filter(Boolean).join('<br>');
       document.getElementById('atlasSumPaths').innerHTML = paths;
@@ -3230,6 +3268,12 @@
       const body = { inputDir, outputDir, size, margin };
       if ((atlasManualOrder || atlasExcluded.size > 0) && visible.length) {
         body.order = visible.map(it => it.name);
+      }
+      const compressEl = document.getElementById('atlasCompress');
+      if (compressEl?.checked) {
+        body.compress = true;
+        body.quality = parseInt(document.getElementById('atlasCompressQuality').value, 10) || 90;
+        body.lossy = !!document.getElementById('atlasCompressLossy').checked;
       }
 
       try {

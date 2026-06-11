@@ -260,7 +260,7 @@ app.post('/api/dedup/apply', async (req, res) => {
 app.post('/api/atlas/generate', async (req, res) => {
   if (isProcessing) return res.status(409).json({ error: 'Processing in progress' });
 
-  const { inputDir, outputDir, size, margin, order } = req.body || {};
+  const { inputDir, outputDir, size, margin, order, compress, quality, lossy } = req.body || {};
   if (!inputDir || !outputDir) {
     return res.status(400).json({ error: 'inputDir and outputDir are required' });
   }
@@ -273,6 +273,9 @@ app.post('/api/atlas/generate', async (req, res) => {
       size: parseInt(size, 10) || 1024,
       margin: Math.max(0, parseInt(margin, 10) || 0),
       order: Array.isArray(order) ? order : null,
+      compress: !!compress,
+      quality: parseInt(quality, 10) || 90,
+      lossy: lossy !== false,
     };
     const result = await atlasCommand(inputDir, outputDir, opts, (e) => {
       broadcast('atlas-progress', e);
@@ -390,33 +393,116 @@ app.get('/api/browse', async (req, res) => {
   }
 });
 
+// Walk a set of roots looking for directories named `target`. Bounded by a
+// depth cap and a wall-clock deadline so a misclick never spins the server
+// for minutes. Used by /api/resolve-drop to turn a dragged folder name into
+// a real absolute path on disk (browsers don't expose the source path).
+const SEARCH_SKIP_DIRS = new Set([
+  'node_modules', '.git', '.svn', '.hg', '.cache', '.npm', '.yarn',
+  'AppData', 'Library', 'Application Data', 'Local Settings',
+  '$Recycle.Bin', 'System Volume Information', 'Windows', 'Program Files',
+  'Program Files (x86)', 'ProgramData',
+]);
+async function findFoldersByName(target, roots, { maxDepth = 6, timeBudgetMs = 3000 } = {}) {
+  const deadline = Date.now() + timeBudgetMs;
+  const found = new Set();
+  const seen = new Set();
+
+  async function walk(dir, depth) {
+    if (depth > maxDepth) return;
+    if (Date.now() > deadline) return;
+    const real = path.resolve(dir);
+    if (seen.has(real)) return;
+    seen.add(real);
+
+    let entries;
+    try {
+      entries = await fs.readdir(real, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    // Check direct children for a name match before descending so shallow
+    // matches surface quickly even when the budget runs out.
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      if (e.name === target) found.add(path.join(real, e.name));
+    }
+    for (const e of entries) {
+      if (Date.now() > deadline) return;
+      if (!e.isDirectory()) continue;
+      if (e.name.startsWith('.')) continue;
+      if (SEARCH_SKIP_DIRS.has(e.name)) continue;
+      await walk(path.join(real, e.name), depth + 1);
+    }
+  }
+
+  for (const root of roots) {
+    if (Date.now() > deadline) break;
+    if (!root) continue;
+    try {
+      const stat = await fs.stat(root);
+      if (stat.isDirectory()) await walk(root, 0);
+    } catch {}
+  }
+  return Array.from(found);
+}
+
 app.post('/api/resolve-drop', async (req, res) => {
   const { name, entries: droppedEntries = [], nearPath = '' } = req.body;
   if (!name) return res.json({ path: null });
 
-  // Collect candidate paths via Spotlight
-  const candidates = [];
-  try {
-    const { execSync } = await import('node:child_process');
-    const safeName = name.replace(/'/g, "\\'");
-    const cmd = `mdfind "kMDItemFSName == '${safeName}' && kMDItemContentType == 'public.folder'" 2>/dev/null | head -50`;
-    const result = execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim();
-    if (result) candidates.push(...result.split('\n').filter(Boolean));
-  } catch {}
-
-  // Also check common locations
   const home = os.homedir();
+
+  // Seed roots: cheap-to-search common locations + parents of every
+  // already-known atlas/watch/output folder (so re-dropping a sibling of a
+  // previously-used folder is instant). Order matters — quick wins first.
+  const knownDirs = [
+    settings.watchFolder,
+    settings.outputDir,
+    ...Array.from(allowedScanDirs),
+  ].filter(Boolean);
+  const knownParents = knownDirs.map((d) => path.dirname(d));
+
+  const candidates = [];
+
+  // Fast path: name directly inside a common location.
   for (const base of [
     path.join(home, 'Desktop'),
     path.join(home, 'Downloads'),
     path.join(home, 'Documents'),
     home,
-    path.dirname(settings.watchFolder),
-    path.dirname(settings.outputDir),
+    ...knownParents,
+    ...knownDirs,
   ]) {
     const c = path.join(base, name);
     if (!candidates.includes(c)) candidates.push(c);
   }
+
+  // Slow path: bounded recursive search rooted at the user's home and any
+  // previously-known folders. Caps at 6 levels deep / 3s wall-clock so it
+  // never stalls the request.
+  const searchRoots = [
+    path.join(home, 'Desktop'),
+    path.join(home, 'Downloads'),
+    path.join(home, 'Documents'),
+    home,
+    ...knownParents,
+    ...knownDirs,
+  ];
+  // Also include the root of every drive on Windows so folders kept off the
+  // user profile (e.g. C:\Projects, D:\assets) are still reachable.
+  if (process.platform === 'win32') {
+    for (const letter of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
+      const drive = `${letter}:\\`;
+      try {
+        const stat = await fs.stat(drive);
+        if (stat.isDirectory()) searchRoots.push(drive);
+      } catch {}
+    }
+  }
+  const found = await findFoldersByName(name, searchRoots, { maxDepth: 6, timeBudgetMs: 2500 });
+  for (const f of found) if (!candidates.includes(f)) candidates.push(f);
 
   // Filter to only valid directories
   const validCandidates = [];
@@ -455,16 +541,18 @@ app.post('/api/resolve-drop', async (req, res) => {
     }
   }
 
-  // If fingerprinting didn't work (empty folder), use proximity to nearPath
+  // If fingerprinting didn't work (empty folder), use proximity to nearPath.
+  // Split on both / and \ so Windows paths score correctly.
+  const splitParts = (p) => p.split(/[\\/]/).filter(Boolean);
   if (nearPath) {
     let bestLen = 0;
     let bestPath = null;
     for (const candidate of validCandidates) {
       let common = 0;
-      const parts1 = candidate.split('/');
-      const parts2 = nearPath.split('/');
+      const parts1 = splitParts(candidate);
+      const parts2 = splitParts(nearPath);
       for (let i = 0; i < Math.min(parts1.length, parts2.length); i++) {
-        if (parts1[i] === parts2[i]) common++;
+        if (parts1[i].toLowerCase() === parts2[i].toLowerCase()) common++;
         else break;
       }
       if (common > bestLen) {
