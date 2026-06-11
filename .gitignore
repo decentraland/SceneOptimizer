@@ -4,3 +4,4 @@ watch/
 dist/
 scripts/.cache/
 *.tmp
+assets-ui/
